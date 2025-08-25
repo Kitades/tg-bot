@@ -1,112 +1,14 @@
 import asyncio
 import logging
-import sqlite3
 from datetime import datetime, timedelta
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from yookassa import Configuration, Payment
-from dotenv import load_dotenv
-import os
-
-# Загрузка переменных окружения
-load_dotenv()
+from aiogram import types, F
+from yookassa import Payment
+from config import SUBSCRIPTION_PRICE, ADMIN_ID, cursor, conn, dp, bot
+from keyboard import payment_keyboard
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Конфигурация бота
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
-YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
-ADMIN_ID = os.getenv("ADMIN_ID", "@vladimir_potyaev")  # ID администратора для уведомлений
-SUBSCRIPTION_PRICE = 299.00  # Цена подписки в рублях
-
-# Настройка YooKassa
-Configuration.account_id = YOOKASSA_SHOP_ID
-Configuration.secret_key = YOOKASSA_SECRET_KEY
-
-# Инициализация бота и диспетчера
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-
-# Подключение к базе данных
-conn = sqlite3.connect('subscriptions.db')
-cursor = conn.cursor()
-
-# Создание таблицы для подписок
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS subscriptions (
-    user_id INTEGER PRIMARY KEY,
-    username TEXT,
-    full_name TEXT,
-    payment_id TEXT, 
-    start_date TEXT,
-    end_date TEXT,
-    status TEXT DEFAULT 'inactive'
-)
-''')
-conn.commit()
-
-
-# Клавиатуры
-def main_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(
-        text="💳 Купить подписку",
-        callback_data="buy_subscription")
-    )
-    builder.add(InlineKeyboardButton(
-        text="ℹ️ О подписке",
-        callback_data="about")
-    )
-    builder.add(InlineKeyboardButton(
-        text="👨‍💻 Поддержка",
-        url="https://t.me/vladimir_potyaev")
-    )
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def payment_keyboard(payment_url):
-    builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(
-        text="💳 Оплатить",
-        url=payment_url)
-    )
-    builder.add(InlineKeyboardButton(
-        text="✅ Я оплатил",
-        callback_data="check_payment")
-    )
-    return builder.as_markup()
-
-
-# Команда /start
-@dp.message(Command("start"))
-async def start_command(message: types.Message):
-    user_id = message.from_user.id
-    username = message.from_user.username or ""
-    full_name = message.from_user.full_name
-
-    # Проверяем есть ли пользователь в базе
-    cursor.execute("SELECT * FROM subscriptions WHERE user_id = ?", (user_id,))
-    user = cursor.fetchone()
-
-    if not user:
-        # Добавляем нового пользователя
-        cursor.execute(
-            "INSERT INTO subscriptions (user_id, username, full_name) VALUES (?, ?, ?)",
-            (user_id, username, full_name)
-        )
-        conn.commit()
-
-    await message.answer(
-        "👋 Добро пожаловать! Этот бот предоставляет доступ к эксклюзивному контенту.\n\n"
-        "💰 Подписка стоит всего 299 руб. в месяц",
-        reply_markup=main_keyboard()
-    )
 
 
 # Обработка кнопки "Купить подписку"
