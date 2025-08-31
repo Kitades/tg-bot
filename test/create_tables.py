@@ -18,7 +18,7 @@ async def create_tables_manually():
         # Создаем таблицу users
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS users (
-                user_id SERIAL PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 telegram_id INTEGER UNIQUE NOT NULL,
                 username VARCHAR(100),
                 full_name VARCHAR(200) NOT NULL,
@@ -33,7 +33,7 @@ async def create_tables_manually():
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS subscriptions (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 plan_type VARCHAR(50) NOT NULL,
                 plan_name VARCHAR(100) NOT NULL,
                 price NUMERIC(10,2) NOT NULL,

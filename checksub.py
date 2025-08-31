@@ -1,102 +1,104 @@
 from datetime import datetime, timedelta
-
 from sqlalchemy import select, text
-from sqlalchemy.sql.functions import current_time
-
-from config import bot, ADMIN_ID
-from database.models import Subscription
-from database.session import AsyncSessionLocal, get_db_session
+from sqlalchemy.sql import func
 import asyncio
+
+from config import ADMIN_ID
+from database.models import Subscription, User
+from database.session import AsyncSessionLocal, get_db_session
+from config import bot  # Или правильный импорт вашего бота
 
 
 async def check_subscriptions():
-    """Упрощенная проверка подписок"""
+    """Проверка и деактивация просроченных подписок"""
     while True:
         try:
             async with AsyncSessionLocal() as session:
-                # Простая проверка что база работает
+                # 1. Проверка подключения к базе
                 result = await session.execute(text("SELECT 1"))
                 print(f"✅ Проверка базы: {result.scalar()}")
 
-        except Exception as e:
-            print(f"❌ Ошибка подключения к базе: {e}")
+                # 2. Деактивация просроченных подписок
+                current_time = datetime.utcnow()
+                expired_result = await session.execute(
+                    select(Subscription)
+                    .where(Subscription.status == 'active')
+                    .where(Subscription.end_date <= current_time)
+                )
+                expired_subscriptions = expired_result.scalars().all()
 
-            # 2. Деактивация просроченных подписок надо доработать
-            expired_result = await session.execute(
-                select(Subscription)
-                .where(Subscription.status == 'active')
-                .where(Subscription.end_date <= current_time)
-            )
-            expired_subscriptions = expired_result.scalars().all()
+                for subscription in expired_subscriptions:
+                    subscription.status = 'expired'
+                    subscription.updated_at = datetime.utcnow()
+                    print(f"🔴 Подписка {subscription.id} деактивирована (просрочена)")
 
-            for subscription in expired_subscriptions:
-                subscription.status = 'expired'
-                subscription.updated_at = datetime.utcnow()
-                print(f"🔴 Подписка {subscription.id} деактивирована (просрочена)")
-
-                # Отправляем уведомление о окончании подписки
-                try:
-                    await bot.send_message(
-                        subscription.user.telegram_id,
-                        "❌ <b>Ваша подписка закончилась</b>\n\n"
-                        "Доступ к эксклюзивному контенту приостановлен.\n"
-                        "Для возобновления доступа приобретите новую подписку.",
-                        parse_mode='HTML'
+                    # Получаем пользователя для отправки уведомления
+                    user_result = await session.execute(
+                        select(User).where(User.id == subscription.user_id)
                     )
-                except Exception as e:
-                    print(f"❌ Ошибка отправки уведомления об окончании: {e}")
+                    user = user_result.scalar_one_or_none()
+
+                    if user:
+                        # Отправляем уведомление о окончании подписки
+                        try:
+                            await bot.send_message(
+                                user.telegram_id,  # Используем telegram_id вместо user.id
+                                "❌ <b>Ваша подписка закончилась</b>\n\n"
+                                "Доступ к эксклюзивному контенту приостановлен.\n"
+                                "Для возобновления доступа приобретите новую подписку.",
+                                parse_mode='HTML'
+                            )
+                            print(f"📧 Уведомление отправлено пользователю {user.telegram_id}")
+                        except Exception as e:
+                            print(f"❌ Ошибка отправки уведомления: {e}")
+
+                # Коммитим изменения в базе
+                if expired_subscriptions:
+                    await session.commit()
+                    print(f"✅ Деактивировано {len(expired_subscriptions)} подписок")
+
+        except Exception as e:
+            print(f"❌ Ошибка в check_subscriptions: {e}")
 
         await asyncio.sleep(24 * 3600)  # Проверяем каждый день
-
-
-async def send_daily_report():
-    """Упрощенный ежедневный отчет"""
-    while True:
-        try:
-            async with AsyncSessionLocal() as session:
-                # Просто проверяем что база доступна
-                result = await session.execute(text("SELECT COUNT(*) FROM information_schema.tables"))
-                table_count = result.scalar()
-                print(f"📊 В базе {table_count} таблиц")
-
-        except Exception as e:
-            print(f"❌ Ошибка отчета: {e}")
-
-        await asyncio.sleep(24 * 3600)  # Раз в день
 
 
 async def send_daily_report():
     """Ежедневный отчет по подпискам"""
     while True:
         try:
-            async with get_db_session() as session:
+            async with AsyncSessionLocal() as session:
                 current_time = datetime.utcnow()
 
-                # Статистика активных подписок
                 active_result = await session.execute(
                     select(Subscription)
                     .where(Subscription.status == 'active')
                     .where(Subscription.end_date > current_time)
                 )
-                active_count = len(active_result.scalars().all())
+                active_subscriptions = active_result.scalars().all()
+                active_count = len(active_subscriptions)
 
-                # Статистика истекающих подписок
                 expiring_result = await session.execute(
                     select(Subscription)
                     .where(Subscription.status == 'active')
                     .where(Subscription.end_date <= current_time + timedelta(days=3))
                     .where(Subscription.end_date > current_time)
                 )
-                expiring_count = len(expiring_result.scalars().all())
+                expiring_subscriptions = expiring_result.scalars().all()
+                expiring_count = len(expiring_subscriptions)
 
-                # Отправляем отчет админу
+                auto_renew_count = 0
+                for sub in expiring_subscriptions:
+                    if hasattr(sub, 'auto_renew') and sub.auto_renew:
+                        auto_renew_count += 1
+
                 if ADMIN_ID:
                     report_text = (
                         f"📊 <b>Ежедневный отчет по подпискам</b>\n\n"
-                        f"📅 Дата: {current_time.strftime('%d.%m.%Y')}\n"
+                        f"📅 Дата: {current_time.strftime('%d.%m.%Y %H:%M')}\n"
                         f"✅ Активных подписок: {active_count}\n"
                         f"⚠️ Истекает в течение 3 дней: {expiring_count}\n"
-                        f"🔄 Автопродление: {len([s for s in expiring_result.scalars().all() if s.auto_renew])}"
+                        f"🔄 Автопродление: {auto_renew_count}"
                     )
 
                     try:
@@ -111,8 +113,45 @@ async def send_daily_report():
         await asyncio.sleep(24 * 3600)
 
 
+async def check_expiring_subscriptions():
+    """Проверка подписок, которые скоро истекут (за 1-2 дня)"""
+    while True:
+        try:
+            async with AsyncSessionLocal() as session:
+                current_time = datetime.utcnow()
+
+                expiring_soon_result = await session.execute(
+                    select(Subscription)
+                    .join(User, Subscription.user_id == User.id)
+                    .where(Subscription.status == 'active')
+                    .where(Subscription.end_date <= current_time + timedelta(days=2))
+                    .where(Subscription.end_date > current_time + timedelta(days=1))
+                )
+                expiring_soon_subs = expiring_soon_result.scalars().all()
+
+                for subscription in expiring_soon_subs:
+                    try:
+                        await bot.send_message(
+                            subscription.user.telegram_id,
+                            "⚠️ <b>Ваша подписка скоро закончится!</b>\n\n"
+                            f"📅 Окончание: {subscription.end_date.strftime('%d.%m.%Y')}\n"
+                            f"⏳ Осталось: {(subscription.end_date - current_time).days} дней\n\n"
+                            "Не забудьте продлить подписку для непрерывного доступа к контенту.",
+                            parse_mode='HTML'
+                        )
+                        print(f"📧 Напоминание отправлено пользователю {subscription.user.telegram_id}")
+                    except Exception as e:
+                        print(f"❌ Ошибка отправки напоминания: {e}")
+
+        except Exception as e:
+            print(f"❌ Ошибка в check_expiring_subscriptions: {e}")
+
+        await asyncio.sleep(12 * 3600)
+
+
 async def start_background_tasks():
     """Запуск всех фоновых задач"""
     asyncio.create_task(check_subscriptions())
     asyncio.create_task(send_daily_report())
+    asyncio.create_task(check_expiring_subscriptions())
     print("✅ Фоновые задачи запущены")

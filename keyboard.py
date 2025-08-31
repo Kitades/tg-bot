@@ -1,10 +1,8 @@
 from aiogram import types
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import SUBSCRIPTION_PRICE
-
 
 
 async def main_keyboard(has_active_sub: bool = False) -> InlineKeyboardMarkup:
@@ -12,25 +10,23 @@ async def main_keyboard(has_active_sub: bool = False) -> InlineKeyboardMarkup:
     if has_active_sub:
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Моя подписка", callback_data="my_subscription")],
-            [InlineKeyboardButton(text="📚 Контент", callback_data="content")],
             [InlineKeyboardButton(text="🆘 Помощь", callback_data="help")]
         ])
     else:
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Купить подписку", callback_data="buy_subscription")],
-            [InlineKeyboardButton(text="📋 Тарифы", callback_data="prices")],
             [InlineKeyboardButton(text="🆘 Помощь", callback_data="help")]
         ])
 
 
-async def show_tariff_selection(callback: types.CallbackQuery, user_id: int):
+async def show_tariff_selection(callback: types.CallbackQuery):
     """Показывает выбор тарифов"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text=f"💳 Обычный - {SUBSCRIPTION_PRICE[1]}₽", callback_data="tariff_regular"),
             InlineKeyboardButton(text=f"🎓 Студент - {SUBSCRIPTION_PRICE[0]}₽", callback_data="tariff_student")
         ],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="back_to_main")]
     ])
 
     await callback.message.answer(
