@@ -257,7 +257,11 @@ async def check_payment(callback: types.CallbackQuery):
                             f"💳 Тариф: {subscription.plan_name}\n"
                             f"💰 Сумма: {subscription.price:.2f}₽\n\n"
                             f"Теперь вам доступен эксклюзивный контент!",
-                            parse_mode='HTML'
+                            parse_mode='HTML',
+                            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                [InlineKeyboardButton(text="📢 Перейти в канал", url=f"{URL}")],
+                                [InlineKeyboardButton(text="◀️ Назад", callback_data="my_subscription")]
+                            ])
                         )
 
                         if ADMIN_ID:
@@ -451,7 +455,7 @@ async def content_handler(callback: types.CallbackQuery):
                     "Для доступа к материалам перейдите в наш канал:",
                     parse_mode='HTML',
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="📢 Перейти в канал", url=f"https://t.me/{URL}")],
+                        [InlineKeyboardButton(text="📢 Перейти в канал", url=f"{URL}")],
                         [InlineKeyboardButton(text="◀️ Назад", callback_data="my_subscription")]
                     ])
                 )

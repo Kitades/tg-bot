@@ -2,7 +2,7 @@ import aiohttp
 import uuid
 import json
 from datetime import datetime
-from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, YOOKASSA_WEBHOOK_URL
+from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, YOOKASSA_WEBHOOK_URL, URL
 
 
 class YooKassaService:
@@ -26,7 +26,7 @@ class YooKassaService:
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": f"https://t.me/your_bot_username?start=success_{subscription_id}"
+                "return_url": f"{URL}" #{subscription_id}
             },
             "capture": True,
             "description": description,

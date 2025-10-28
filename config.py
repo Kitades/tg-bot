@@ -11,11 +11,11 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 YOOKASSA_WEBHOOK_URL = os.getenv('YOOKASSA_WEBHOOK_URL', 'https://yourdomain.com/yookassa-webhook')
-URL="+L4cf2SCD-9dkZTli"
+URL = "https://t.me/+L4cf2SCD-9dkZTli"
 
 ADMIN_ID = os.getenv("ADMIN_ID", "@vladimir_potyaev")  # ID администратора для уведомлений
 
-SUBSCRIPTION_PRICE = (5000.00, 8000.00)  # Цена подписки в рублях
+SUBSCRIPTION_PRICE = (5000.00, 8000.00, 100.00)  # Цена подписки в рублях
 
 # база
 DB_HOST = os.getenv("DB_HOST")
