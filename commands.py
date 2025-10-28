@@ -271,7 +271,7 @@ async def check_payment(callback: types.CallbackQuery):
                                     f"💸 Новая подписка!\n"
                                     f"👤 Пользователь: {user.full_name}\n"
                                     f"📧 @{user.username or 'нет'}\n"
-                                    f"🆔 ID: {user.id}\n"
+                                    f"🆔 ID: {user.telegram_id}\n"
                                     f"💳 Тариф: {subscription.plan_name}\n"
                                     f"💰 Сумма: {subscription.price:.2f}₽"
                                 )

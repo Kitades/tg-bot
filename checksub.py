@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from sqlalchemy import select, text
+from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import func
 import asyncio
 
@@ -80,25 +81,26 @@ async def send_daily_report():
 
                 expiring_result = await session.execute(
                     select(Subscription)
+                    .options(joinedload(Subscription.user))
                     .where(Subscription.status == 'active')
-                    .where(Subscription.end_date <= current_time + timedelta(days=3))
+                    .where(Subscription.end_date <= current_time + timedelta(days=1))
                     .where(Subscription.end_date > current_time)
                 )
                 expiring_subscriptions = expiring_result.scalars().all()
-                expiring_count = len(expiring_subscriptions)
 
-                auto_renew_count = 0
-                for sub in expiring_subscriptions:
-                    if hasattr(sub, 'auto_renew') and sub.auto_renew:
-                        auto_renew_count += 1
+                data = []
+                for subscription in expiring_subscriptions:
+                    if subscription.user:  # Проверяем, что пользователь загружен
+                        telegram_id = subscription.user.telegram_id
+                        username = subscription.user.username
+                        data.append(f"У пользователя {username} c id {telegram_id} заканчивается подписка")
 
                 if ADMIN_ID:
                     report_text = (
                         f"📊 <b>Ежедневный отчет по подпискам</b>\n\n"
                         f"📅 Дата: {current_time.strftime('%d.%m.%Y %H:%M')}\n"
                         f"✅ Активных подписок: {active_count}\n"
-                        f"⚠️ Истекает в течение 3 дней: {expiring_count}\n"
-                        f"🔄 Автопродление: {auto_renew_count}"
+                        f"⚠️ Истекает в течение 1 дня: {data}\n"
                     )
 
                     try:
