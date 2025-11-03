@@ -1,13 +1,13 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from config import ADMIN_ID, SUBSCRIPTION_PRICE, URL
 from database.models import User, Subscription
 from database.session import get_db_session
-from keyboard import main_keyboard, show_tariff_selection
+from keyboard import main_keyboard, show_tariff_selection, _process_tariff_selection, _check_payment, _content_handler, \
+    _content_handler_false, back_main, my_subscription, my_subscription_inactive
 from payment import yookassa_service
 
 router = Router()
@@ -42,26 +42,10 @@ async def cmd_start(message: types.Message):
                 await session.refresh(user)
 
             has_active_sub = await check_active_subscription(user.id)
-            welcome_text = (
-                "👋 Приветсвуем вас в чате вступления в канал Потяева Владимира о стоматологи. "
-                "Вас ждут еженедельные разборы консультаций, ортодонтических случаев, интересных комплексных случаев, "
-                "разборы организации  клиники и взаимосвязи управления с медициной, "
-                "регулярные обсуждения по живым вопросам!\n\n"
-                f"💰 Участие в информационном канале по стоматологии - {SUBSCRIPTION_PRICE[1]} руб в месяц\n"
-                f"🎓 Для студентов и ординаторов - {SUBSCRIPTION_PRICE[0]} руб в месяц"
-            )
 
-            if has_active_sub:
-                sub_info = await get_subscription_info(user.id)
-                welcome_text += f"\n\n🎉 <b>У вас активная подписка до {sub_info['end_date']}</b>"
-            else:
-                welcome_text += "\n\n📋 Используйте кнопку '💳 Купить подписку' для доступа к контенту"
+            sub_info = await get_subscription_info(user.id)
 
-            await message.answer(
-                welcome_text,
-                parse_mode='HTML',
-                reply_markup=await main_keyboard(has_active_sub)
-            )
+            await main_keyboard(message, sub_info, has_active_sub)
 
         except Exception as e:
             print(f"❌ Ошибка в /start: {e}")
@@ -177,19 +161,8 @@ async def process_tariff_selection(callback: types.CallbackQuery):
                 subscription.payment_id = payment['payment_id']
                 await session.commit()
 
-                await callback.message.answer(
-                    f"✅ Выбран тариф: {subscription.plan_name}\n"
-                    f"💳 Сумма к оплате: {subscription.price:.2f}₽\n\n"
-                    f"🔗 <a href='{payment['confirmation_url']}'>Ссылка для оплаты</a>\n\n"
-                    "После оплаты нажмите '✅ Проверить оплату'",
-                    parse_mode='HTML',
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="✅ Проверить оплату",
-                                              callback_data=f"check_payment_{subscription.id}")],
-                        [InlineKeyboardButton(text="🔗 Перейти к оплате", url=payment['confirmation_url'])],
-                        [InlineKeyboardButton(text="❌ Отмена", callback_data="back_to_main")]
-                    ])
-                )
+                await _process_tariff_selection(callback, subscription, payment)
+
             except Exception as e:
                 print(f"❌ Ошибка создания платежа: {e}")
                 await callback.message.answer("❌ Ошибка при создании платежа. Попробуйте позже.")
@@ -251,18 +224,7 @@ async def check_payment(callback: types.CallbackQuery):
 
                         await session.commit()
 
-                        await callback.message.answer(
-                            f"🎉 <b>Подписка активирована!</b>\n\n"
-                            f"📅 Действует до: {subscription.end_date.strftime('%d.%m.%Y')}\n"
-                            f"💳 Тариф: {subscription.plan_name}\n"
-                            f"💰 Сумма: {subscription.price:.2f}₽\n\n"
-                            f"Теперь вам доступен эксклюзивный контент!",
-                            parse_mode='HTML',
-                            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                [InlineKeyboardButton(text="📢 Перейти в канал", url=f"{URL}")],
-                                [InlineKeyboardButton(text="◀️ Назад", callback_data="my_subscription")]
-                            ])
-                        )
+                        await _check_payment(callback, subscription, URL)
 
                         if ADMIN_ID:
                             try:
@@ -323,58 +285,21 @@ async def my_subscription_handler(callback: types.CallbackQuery):
                 .order_by(Subscription.created_at.desc())
             )
             subscription = result.scalar_one_or_none()
-
             if subscription:
-
                 days_left = (subscription.end_date - datetime.utcnow()).days
-
-                message_text = (
-                    f"📊 <b>Ваша подписка</b>\n\n"
-                    f"💳 Тариф: {subscription.plan_name}\n"
-                    f"💰 Стоимость: {subscription.price:.2f}₽\n"
-                    f"📅 Начало: {subscription.start_date.strftime('%d.%m.%Y')}\n"
-                    f"📅 Окончание: {subscription.end_date.strftime('%d.%m.%Y')}\n"
-                    f"⏳ Осталось дней: {days_left}\n"
-                    f"🔄 Статус: ✅ Активна"
-                )
-
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="📚 Перейти к контенту", callback_data="content")],
-                    [InlineKeyboardButton(text="🔄 Продлить подписку", callback_data="buy_subscription")],
-                    [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
-                ])
-
+                await my_subscription(callback, subscription, days_left)
             else:
-
                 inactive_result = await session.execute(
                     select(Subscription)
                     .where(Subscription.user_id == user.id)
                     .order_by(Subscription.created_at.desc())
                 )
                 inactive_sub = inactive_result.scalar_one_or_none()
-
                 if inactive_sub:
-                    message_text = (
-                        f"📊 <b>История подписок</b>\n\n"
-                        f"💳 Тариф: {inactive_sub.plan_name}\n"
-                        f"💰 Стоимость: {inactive_sub.price:.2f}₽\n"
-                        f"📅 Была активна до: {inactive_sub.end_date.strftime('%d.%m.%Y')}\n"
-                        f"🔄 Статус: ❌ {inactive_sub.status}"
-                    )
+                    await my_subscription_inactive(callback, inactive_sub)
                 else:
-                    message_text = "❌ У вас нет активных подписок"
+                    await callback.message.answer("❌ У вас нет активных подписок")
 
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="💳 Купить подписку", callback_data="buy_subscription")],
-                    [InlineKeyboardButton(text="📋 Посмотреть тарифы", callback_data="prices")],
-                    [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
-                ])
-
-            await callback.message.edit_text(
-                message_text,
-                parse_mode='HTML',
-                reply_markup=keyboard
-            )
             await callback.answer()
 
         except Exception as e:
@@ -403,17 +328,11 @@ async def back_to_main_handler(callback: types.CallbackQuery):
                     .where(Subscription.end_date > datetime.utcnow())
                 )
                 has_active_sub = result.scalar_one_or_none() is not None
+                await back_main(callback, has_active_sub)
             else:
                 has_active_sub = False
+                await back_main(callback, has_active_sub)
 
-            from keyboard import main_keyboard
-            keyboard = await main_keyboard(has_active_sub)
-
-            # Возвращаемся к главному сообщению
-            await callback.message.edit_text(
-                "👋 Добро пожаловать в главное меню!",
-                reply_markup=keyboard
-            )
             await callback.answer()
 
         except Exception as e:
@@ -446,29 +365,9 @@ async def content_handler(callback: types.CallbackQuery):
                 has_active_sub = False
 
             if has_active_sub:
-                await callback.message.answer(
-                    "📚 <b>Доступный контент:</b>\n\n"
-                    "• Эксклюзивные статьи по стоматологии\n"
-                    "• Видео-уроки и мастер-классы\n"
-                    "• Новости индустрии\n"
-                    "• Возможность задать вопросы экспертам\n\n"
-                    "Для доступа к материалам перейдите в наш канал:",
-                    parse_mode='HTML',
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="📢 Перейти в канал", url=f"{URL}")],
-                        [InlineKeyboardButton(text="◀️ Назад", callback_data="my_subscription")]
-                    ])
-                )
+                await _content_handler(callback, URL)
             else:
-                await callback.message.answer(
-                    "❌ <b>Доступ ограничен</b>\n\n"
-                    "Для доступа к эксклюзивному контенту необходимо приобрести подписку.",
-                    parse_mode='HTML',
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="💳 Купить подписку", callback_data="buy_subscription")],
-                        [InlineKeyboardButton(text="◀️ Назад", callback_data="my_subscription")]
-                    ])
-                )
+                await _content_handler_false(callback)
 
             await callback.answer()
 

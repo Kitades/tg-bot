@@ -13,7 +13,7 @@ YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 YOOKASSA_WEBHOOK_URL = os.getenv('YOOKASSA_WEBHOOK_URL', 'https://yourdomain.com/yookassa-webhook')
 URL = "https://t.me/+L4cf2SCD-9dkZTli"
 
-ADMIN_ID = 91211500  # ID администратора для уведомлений
+ADMIN_ID = 384110333  # ID администратора для уведомлений
 
 SUBSCRIPTION_PRICE = (5000.00, 8000.00, 100.00)  # Цена подписки в рублях
 
