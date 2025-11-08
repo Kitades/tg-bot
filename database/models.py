@@ -36,6 +36,26 @@ class User(Base):
         return f"<User(id={self.id}, username={self.username})>"
 
 
+class UserSettings(Base):
+    __tablename__ = 'user_settings'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    wants_free_posts = Column(Boolean, default=True)
+    timezone = Column(String, default="UTC")
+
+
+class FreeDailyPost(Base):
+    __tablename__ = 'free_daily_posts'
+
+    id = Column(Integer, primary_key=True)
+    content = Column(Text, nullable=False)
+    photo_path = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    scheduled_time = Column(String, default="10:00")  # Время для бесплатной рассылки
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
 

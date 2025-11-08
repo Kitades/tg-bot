@@ -2,14 +2,14 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool
 from contextlib import asynccontextmanager
-from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME
+from config import DATABASE_URL
 
 # URL подключения для asyncpg
-DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+database = DATABASE_URL
 
 # Создаем асинхронный engine
 engine = create_async_engine(
-    DATABASE_URL,
+    database,
     echo=True,
     poolclass=NullPool,
     future=True

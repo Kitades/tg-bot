@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta
 from sqlalchemy import select, text
 from sqlalchemy.orm import joinedload
-from sqlalchemy.sql import func
 import asyncio
 
-from config import ADMIN_ID
+from config import ADMIN_IDS, USERNAME_CHANNEL
 from database.models import Subscription, User
-from database.session import AsyncSessionLocal, get_db_session
+from database.session import AsyncSessionLocal
 from config import bot  # Или правильный импорт вашего бота
+from helpers import notify_admins, get_admin_ids
+from servises.telegram_service import TelegramService
 
 
 async def check_subscriptions():
@@ -29,21 +30,14 @@ async def check_subscriptions():
                 expired_subscriptions = expired_result.scalars().all()
 
                 for subscription in expired_subscriptions:
-                    subscription.status = 'expired'
-                    subscription.updated_at = datetime.utcnow()
-                    print(f"🔴 Подписка {subscription.id} деактивирована (просрочена)")
-
-                    # Получаем пользователя для отправки уведомления
                     user_result = await session.execute(
                         select(User).where(User.id == subscription.user_id)
                     )
                     user = user_result.scalar_one_or_none()
-
                     if user:
-                        # Отправляем уведомление о окончании подписки
                         try:
                             await bot.send_message(
-                                user.telegram_id,  # Используем telegram_id вместо user.id
+                                user.telegram_id,
                                 "❌ <b>Ваша подписка закончилась</b>\n\n"
                                 "Доступ к эксклюзивному контенту приостановлен.\n"
                                 "Для возобновления доступа приобретите новую подписку.",
@@ -53,6 +47,24 @@ async def check_subscriptions():
                         except Exception as e:
                             print(f"❌ Ошибка отправки уведомления: {e}")
 
+                    subscription.status = 'expired'
+                    subscription.updated_at = datetime.utcnow()
+
+                    try:
+                        success = await TelegramService.remove_user_from_channel(
+                            bot, user.telegram_id, USERNAME_CHANNEL)
+
+                    except Exception as e:
+                        print(f"{e}")
+                        success = False
+                        await TelegramService.unban_from_channel(bot, user.telegram_id, USERNAME_CHANNEL)
+                    if success:
+                        print(f"🔴 Подписка {subscription.id} деактивирована (просрочена)")
+                    else:
+                        print(f"🔴 У {user.telegram_id} , не удалось удалить подписку")
+
+                    # Получаем пользователя для отправки уведомления
+
                 # Коммитим изменения в базе
                 if expired_subscriptions:
                     await session.commit()
@@ -61,7 +73,7 @@ async def check_subscriptions():
         except Exception as e:
             print(f"❌ Ошибка в check_subscriptions: {e}")
 
-        await asyncio.sleep(24 * 3600)  # Проверяем каждый день
+        await asyncio.sleep(30)  # Проверяем каждый день
 
 
 async def send_daily_report():
@@ -95,7 +107,7 @@ async def send_daily_report():
                         username = subscription.user.username
                         data.append(f"У пользователя {username} c id {telegram_id} заканчивается подписка")
 
-                if ADMIN_ID:
+                if get_admin_ids():
                     report_text = (
                         f"📊 <b>Ежедневный отчет по подпискам</b>\n\n"
                         f"📅 Дата: {current_time.strftime('%d.%m.%Y %H:%M')}\n"
@@ -103,11 +115,8 @@ async def send_daily_report():
                         f"⚠️ Истекает в течение 1 дня: {data}\n"
                     )
 
-                    try:
-                        await bot.send_message(ADMIN_ID, report_text, parse_mode='HTML')
-                        print("📊 Отчет отправлен администратору")
-                    except Exception as e:
-                        print(f"❌ Ошибка отправки отчета: {e}")
+                    success_count, fail_count = await notify_admins(bot, report_text, parse_mode='HTML')
+                    print(f"📊 Отчет отправлен: {success_count} успешно, {fail_count} с ошибкой")
 
         except Exception as e:
             print(f"❌ Ошибка в send_daily_report: {e}")

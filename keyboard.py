@@ -4,19 +4,27 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import SUBSCRIPTION_PRICE
 
+welcome_text = (
+    "👋 Приветсвуем вас в чате вступления в канал Потяева Владимира о стоматологии.\n"
+    "Вас ждут еженедельные разборы консультаций, ортодонтических случаев, интересных комплексных случаев, "
+    "разборы организации  клиники и взаимосвязи управления с медициной, "
+    "регулярные обсуждения по живым вопросам!\n\n"
+    "🎁 Вы автоматически подписаны на <b>бесплатную рассылку</b> - "
+    "будете получать интересные посты каждый день в 14:00.\n\n"
+    "💎 Чтобы получить доступ ко всему эксклюзивному контенту, "
+    "оформите премиум подписку: \n\n"
+)
+
 
 async def main_keyboard(message, sub_info, has_active_sub: bool = False):
     """Создает главную клавиатуру"""
     if has_active_sub:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Моя подписка", callback_data="my_subscription")],
-            [InlineKeyboardButton(text="🆘 Помощь", callback_data="help")]
+            [InlineKeyboardButton(text=" Помощь", callback_data="help")]
         ])
         await message.answer(
-            "👋 Приветсвуем вас в чате вступления в канал Потяева Владимира о стоматологи. "
-            "Вас ждут еженедельные разборы консультаций, ортодонтических случаев, интересных комплексных случаев, "
-            "разборы организации  клиники и взаимосвязи управления с медициной, "
-            "регулярные обсуждения по живым вопросам!\n\n"
+            f"{welcome_text}"
             f"💰 Участие в информационном канале по стоматологии - {SUBSCRIPTION_PRICE[1]} руб в месяц\n"
             f"🎓 Для студентов и ординаторов - {SUBSCRIPTION_PRICE[0]} руб в месяц"
             f"\n\n🎉 <b>У вас активная подписка до {sub_info['end_date']}</b>",
@@ -26,13 +34,10 @@ async def main_keyboard(message, sub_info, has_active_sub: bool = False):
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Купить подписку", callback_data="buy_subscription")],
-            [InlineKeyboardButton(text="🆘 Помощь", callback_data="help")]
+            [InlineKeyboardButton(text=" Помощь", callback_data="help")]
         ])
         await message.answer(
-            "👋 Приветсвуем вас в чате вступления в канал Потяева Владимира о стоматологи. "
-            "Вас ждут еженедельные разборы консультаций, ортодонтических случаев, интересных комплексных случаев, "
-            "разборы организации  клиники и взаимосвязи управления с медициной, "
-            "регулярные обсуждения по живым вопросам!\n\n"
+            f"{welcome_text}"
             f"💰 Участие в информационном канале по стоматологии - {SUBSCRIPTION_PRICE[1]} руб в месяц\n"
             f"🎓 Для студентов и ординаторов - {SUBSCRIPTION_PRICE[0]} руб в месяц"
             "\n\n📋 Используйте кнопку '💳 Купить подписку' для доступа к контенту",
@@ -45,26 +50,20 @@ async def back_main(callback, has_active_sub):
     if has_active_sub:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Моя подписка", callback_data="my_subscription")],
-            [InlineKeyboardButton(text="🆘 Помощь", callback_data="help")]
+            [InlineKeyboardButton(text=" Помощь", callback_data="help")]
         ])
         await callback.message.answer(
-            "👋 Приветсвуем вас в чате вступления в канал Потяева Владимира о стоматологи. "
-            "Вас ждут еженедельные разборы консультаций, ортодонтических случаев, интересных комплексных случаев, "
-            "разборы организации  клиники и взаимосвязи управления с медициной, "
-            "регулярные обсуждения по живым вопросам!\n\n",
+            welcome_text,
             parse_mode='HTML',
             reply_markup=keyboard
         )
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Купить подписку", callback_data="buy_subscription")],
-            [InlineKeyboardButton(text="🆘 Помощь", callback_data="help")]
+            [InlineKeyboardButton(text=" Помощь", callback_data="help")]
         ])
         await callback.message.answer(
-            "👋 Приветсвуем вас в чате вступления в канал Потяева Владимира о стоматологи. "
-            "Вас ждут еженедельные разборы консультаций, ортодонтических случаев, интересных комплексных случаев, "
-            "разборы организации  клиники и взаимосвязи управления с медициной, "
-            "регулярные обсуждения по живым вопросам!\n\n",
+            welcome_text,
             parse_mode='HTML',
             reply_markup=keyboard
         )
@@ -193,4 +192,3 @@ async def my_subscription_inactive(callback, inactive_sub):
         parse_mode='HTML',
         reply_markup=keyboard
     )
-

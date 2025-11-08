@@ -1,14 +1,17 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from datetime import datetime, timedelta
-from sqlalchemy import select
+from sqlalchemy import select, and_
+from sqlalchemy.orm import Session
 
-from config import ADMIN_ID, SUBSCRIPTION_PRICE, URL
-from database.models import User, Subscription
+from config import SUBSCRIPTION_PRICE, URL
+from database.models import User, Subscription, UserSettings, FreeDailyPost
 from database.session import get_db_session
+from helpers import is_admin, get_admin_ids, notify_admins_about_subscription
 from keyboard import main_keyboard, show_tariff_selection, _process_tariff_selection, _check_payment, _content_handler, \
     _content_handler_false, back_main, my_subscription, my_subscription_inactive
 from payment import yookassa_service
+from servises.daily_poster import FreePostService
 
 router = Router()
 
@@ -20,7 +23,6 @@ PRICES = {
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
-    """Обработчик команды /start"""
     telegram_user = message.from_user
 
     async with get_db_session() as session:
@@ -37,7 +39,12 @@ async def cmd_start(message: types.Message):
                     full_name=f"{telegram_user.first_name or ''} {telegram_user.last_name or ''}".strip()
                 )
                 session.add(user)
+
+                user_settings = UserSettings(user_id=user.id, wants_free_posts=True)
+                session.add(user_settings)
+
                 await session.commit()
+
                 print(f"✅ Пользователь создан: {telegram_user.id}")
                 await session.refresh(user)
 
@@ -226,16 +233,12 @@ async def check_payment(callback: types.CallbackQuery):
 
                         await _check_payment(callback, subscription, URL)
 
-                        if ADMIN_ID:
+                        if get_admin_ids():
                             try:
-                                await callback.bot.send_message(
-                                    ADMIN_ID,
-                                    f"💸 Новая подписка!\n"
-                                    f"👤 Пользователь: {user.full_name}\n"
-                                    f"📧 @{user.username or 'нет'}\n"
-                                    f"🆔 ID: {user.telegram_id}\n"
-                                    f"💳 Тариф: {subscription.plan_name}\n"
-                                    f"💰 Сумма: {subscription.price:.2f}₽"
+                                await notify_admins_about_subscription(
+                                    callback.bot,
+                                    user,
+                                    subscription
                                 )
                             except Exception as e:
                                 print(f"❌ Ошибка уведомления админу: {e}")
@@ -375,3 +378,154 @@ async def content_handler(callback: types.CallbackQuery):
             print(f"❌ Ошибка в content_handler: {e}")
             await callback.message.answer("❌ Произошла ошибка")
             await callback.answer()
+
+
+@router.message(Command("free_subscribe"))
+async def free_subscribe_handler(message: types.Message):
+    """Подписаться на бесплатную рассылку"""
+    telegram_user = message.from_user
+    async with get_db_session() as session:
+        try:
+
+            user_result = await session.execute(
+                select(User).where(User.telegram_id == telegram_user.id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            if not user:
+                await message.answer("❌ Пользователь не найден. Используйте /start")
+                return
+
+                # Проверяем, есть ли у пользователя активная подписка
+            current_time = datetime.utcnow()
+            active_subscription = await session.execute(
+                select(Subscription)
+                .where(
+                    and_(
+                        Subscription.user_id == user.id,
+                        Subscription.status == 'active',
+                        Subscription.end_date > current_time
+                    )
+                )
+            )
+            active_subscription = active_subscription.scalar()
+
+            if active_subscription:
+                await message.answer(
+                    "❌ У вас уже есть активная премиум подписка!\n"
+                    "Бесплатная рассылка предназначена для пользователей без подписки."
+                )
+                return
+
+            # Находим или создаем настройки пользователя
+            user_settings = await session.get(UserSettings, user.id)
+            if not user_settings:
+                user_settings = UserSettings(user_id=user.id, wants_free_posts=True)
+                session.add(user_settings)
+            else:
+                user_settings.wants_free_posts = True
+
+            await session.commit()
+
+            await message.answer(
+                "✅ Вы подписались на бесплатную рассылку!\n"
+                "Вы будете получать интересные посты каждый день в 14:00 утра.\n\n"
+                "💎 Чтобы получить доступ ко всему контенту, оформите премиум подписку"
+            )
+        except Exception as e:
+            print(f"❌ Ошибка в /free_subscribe: {e}")
+            await session.rollback()
+            await message.answer("Произошла ошибка. Попробуйте позже.")
+
+
+@router.message(Command("free_unsubscribe"))
+async def free_unsubscribe_handler(message: types.Message):
+    """Отписаться от бесплатной рассылки"""
+    user_id = message.from_user.id
+    async with get_db_session() as session:
+        try:
+            user_settings = await session.get(UserSettings, user_id)
+            if user_settings:
+                user_settings.wants_free_posts = False
+                await session.commit()
+
+            await message.answer(
+                "❌ Вы отписались от бесплатной рассылки.\n"
+                "Чтобы снова подписаться, используйте /free_subscribe\n\n"
+                "💎 Или оформите премиум подписку"
+            )
+        except Exception as e:
+            print(f"❌ Ошибка в /free_unsubscribe: {e}")
+            await message.answer("Произошла ошибка. Попробуйте позже.")
+
+
+@router.message(Command("add_free_post"))
+async def add_free_post_handler(message: types.Message):
+    """Добавить пост для бесплатной рассылки (для админов)"""
+    async with get_db_session() as session:
+        try:
+            if not await is_admin(message.from_user.id):
+                await message.answer("У вас нет прав для этой команды")
+                return
+
+            post_text = message.text.replace('/add_free_post', '').strip()
+
+            if not post_text:
+                await message.answer("Использование: /add_free_post текст поста")
+                return
+
+            new_post = FreeDailyPost(content=post_text)
+            session.add(new_post)
+            await session.commit()
+
+            await message.answer("✅ Бесплатный пост добавлен для рассылки!")
+        except Exception as e:
+            print(f"❌ Ошибка в /add_free_post: {e}")
+            await message.answer("Произошла ошибка. Попробуйте позже.")
+
+
+@router.message(Command("free_stats"))
+async def free_stats_handler(message: types.Message):
+    """Статистика бесплатной рассылки (для админов)"""
+    async with get_db_session() as session:
+        try:
+
+            if not await is_admin(message.from_user.id):
+                await message.answer("У вас нет прав для этой команды")
+                return
+
+            # Количество пользователей без подписки
+            users_without_sub = await FreePostService.get_users_without_subscription()
+
+            # Количество пользователей с истекшей подпиской
+            users_expired_sub = await FreePostService.get_users_with_expired_subscription()
+
+            total_free_users = len(users_without_sub) + len(users_expired_sub)
+
+            # Количество пользователей с активной подпиской
+            current_time = datetime.utcnow()
+            active_subs = await session.execute(
+                select(Subscription)
+                .where(
+                    and_(
+                        Subscription.status == 'active',
+                        Subscription.end_date > current_time
+                    )
+                )
+            )
+            active_subs_count = len(active_subs.scalars().all())
+
+            stats_text = (
+                "📊 <b>Статистика рассылок</b>\n\n"
+                f"👥 <b>Пользователей с подпиской:</b> {active_subs_count}\n"
+                f"🎁 <b>Пользователей без подписки:</b> {total_free_users}\n"
+                f"   - Никогда не было подписки: {len(users_without_sub)}\n"
+                f"   - Подписка истекла: {len(users_expired_sub)}\n\n"
+                f"⏰ <b>Время бесплатной рассылки:</b> 14:00"
+            )
+
+            await message.answer(stats_text, parse_mode="HTML")
+
+        except Exception as e:
+            print(f"❌ Ошибка в /free_stats: {e}")
+            await message.answer("Произошла ошибка. Попробуйте позже.")
