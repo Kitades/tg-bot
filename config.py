@@ -1,5 +1,4 @@
 from aiogram import Bot, Dispatcher
-from yookassa import Configuration
 import os
 from dotenv import load_dotenv
 
@@ -22,7 +21,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 
 URL = "https://t.me/+Etm_DDqjYI81OGVi"
 USERNAME_CHANNEL = '-1003210745015'
-ADMIN_IDS = [384110333, 987654321, 555666777]
+ADMIN_IDS = [91211500, 384110333]
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)

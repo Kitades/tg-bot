@@ -1,9 +1,7 @@
 from datetime import datetime, timedelta
 from aiogram import Bot
-from aiogram.types import InputFile
 
-from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_
 
 from database.models import Subscription, User, UserSettings, FreeDailyPost
 from database.session import get_db_session
@@ -79,11 +77,10 @@ class FreePostService:
                 "💎 <i>Хотите больше контента? Оформите премиум подписку!</i>"
             )
 
-            if post.photo_path:
-                photo = InputFile(post.photo_path)
+            if post.photo_file_id:
                 await bot.send_photo(
                     chat_id=user.telegram_id,
-                    photo=photo,
+                    photo=post.photo_file_id,
                     caption=message_text,
                     parse_mode="HTML"
                 )

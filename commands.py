@@ -1,18 +1,25 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from datetime import datetime, timedelta
-from sqlalchemy import select, and_
-from sqlalchemy.orm import Session
 
-from config import SUBSCRIPTION_PRICE, URL
+from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy import select, and_
+
+from config import SUBSCRIPTION_PRICE, URL, ADMIN_IDS
 from database.models import User, Subscription, UserSettings, FreeDailyPost
 from database.session import get_db_session
 from helpers import is_admin, get_admin_ids, notify_admins_about_subscription
 from keyboard import main_keyboard, show_tariff_selection, _process_tariff_selection, _check_payment, _content_handler, \
     _content_handler_false, back_main, my_subscription, my_subscription_inactive
+import logging
+
 from payment import yookassa_service
 from servises.daily_poster import FreePostService
+from states.subscription_states import FreePostCreation
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 router = Router()
 
 PRICES = {
@@ -39,23 +46,29 @@ async def cmd_start(message: types.Message):
                     full_name=f"{telegram_user.first_name or ''} {telegram_user.last_name or ''}".strip()
                 )
                 session.add(user)
-
-                user_settings = UserSettings(user_id=user.id, wants_free_posts=True)
+                await session.flush()
+                print(f"✅ Создан пользователь с ID: {user.id}")
+            user_settings = await session.get(UserSettings, user.id)
+            if not user_settings:
+                user_settings = UserSettings(
+                    user_id=user.id,
+                    wants_free_posts=True
+                )
                 session.add(user_settings)
+                print(f"✅ Созданы настройки для user_id: {user.id}")
 
-                await session.commit()
-
-                print(f"✅ Пользователь создан: {telegram_user.id}")
-                await session.refresh(user)
-
+            await session.commit()
+            print(f"✅ Пользователь создан: {telegram_user.id}")
+            await session.refresh(user)
+            await session.refresh(user_settings)
             has_active_sub = await check_active_subscription(user.id)
-
             sub_info = await get_subscription_info(user.id)
 
             await main_keyboard(message, sub_info, has_active_sub)
 
         except Exception as e:
             print(f"❌ Ошибка в /start: {e}")
+            await session.rollback()
             await message.answer("Произошла ошибка. Попробуйте позже.")
 
 
@@ -383,12 +396,12 @@ async def content_handler(callback: types.CallbackQuery):
 @router.message(Command("free_subscribe"))
 async def free_subscribe_handler(message: types.Message):
     """Подписаться на бесплатную рассылку"""
-    telegram_user = message.from_user
+    telegram_user = message.from_user.id
     async with get_db_session() as session:
         try:
 
             user_result = await session.execute(
-                select(User).where(User.telegram_id == telegram_user.id)
+                select(User).where(User.telegram_id == telegram_user)
             )
             user = user_result.scalar_one_or_none()
 
@@ -420,7 +433,10 @@ async def free_subscribe_handler(message: types.Message):
             # Находим или создаем настройки пользователя
             user_settings = await session.get(UserSettings, user.id)
             if not user_settings:
-                user_settings = UserSettings(user_id=user.id, wants_free_posts=True)
+                user_settings = UserSettings(
+                    user_id=user.id,
+                    wants_free_posts=True
+                )
                 session.add(user_settings)
             else:
                 user_settings.wants_free_posts = True
@@ -459,31 +475,6 @@ async def free_unsubscribe_handler(message: types.Message):
             await message.answer("Произошла ошибка. Попробуйте позже.")
 
 
-@router.message(Command("add_free_post"))
-async def add_free_post_handler(message: types.Message):
-    """Добавить пост для бесплатной рассылки (для админов)"""
-    async with get_db_session() as session:
-        try:
-            if not await is_admin(message.from_user.id):
-                await message.answer("У вас нет прав для этой команды")
-                return
-
-            post_text = message.text.replace('/add_free_post', '').strip()
-
-            if not post_text:
-                await message.answer("Использование: /add_free_post текст поста")
-                return
-
-            new_post = FreeDailyPost(content=post_text)
-            session.add(new_post)
-            await session.commit()
-
-            await message.answer("✅ Бесплатный пост добавлен для рассылки!")
-        except Exception as e:
-            print(f"❌ Ошибка в /add_free_post: {e}")
-            await message.answer("Произошла ошибка. Попробуйте позже.")
-
-
 @router.message(Command("free_stats"))
 async def free_stats_handler(message: types.Message):
     """Статистика бесплатной рассылки (для админов)"""
@@ -517,11 +508,11 @@ async def free_stats_handler(message: types.Message):
 
             stats_text = (
                 "📊 <b>Статистика рассылок</b>\n\n"
-                f"👥 <b>Пользователей с подпиской:</b> {active_subs_count}\n"
-                f"🎁 <b>Пользователей без подписки:</b> {total_free_users}\n"
+                f" <b>Пользователей с подпиской:</b> {active_subs_count}\n"
+                f" <b>Пользователей без подписки:</b> {total_free_users}\n"
                 f"   - Никогда не было подписки: {len(users_without_sub)}\n"
                 f"   - Подписка истекла: {len(users_expired_sub)}\n\n"
-                f"⏰ <b>Время бесплатной рассылки:</b> 14:00"
+                f" <b>Время бесплатной рассылки:</b> 14:00"
             )
 
             await message.answer(stats_text, parse_mode="HTML")
@@ -529,3 +520,400 @@ async def free_stats_handler(message: types.Message):
         except Exception as e:
             print(f"❌ Ошибка в /free_stats: {e}")
             await message.answer("Произошла ошибка. Попробуйте позже.")
+
+
+@router.callback_query(lambda c: c.data == "help")
+async def quick_help_handler(callback: types.CallbackQuery):
+    """Быстрая помощь через инлайн-кнопку"""
+    admin_id = ADMIN_IDS[0]
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        types.InlineKeyboardButton(
+            text="💬 Написать админу",
+            url=f"tg://user?id={admin_id}"
+        )
+    )
+
+    await callback.message.answer(
+        " <b>Быстрая помощь</b>\n\n"
+        "Нажмите кнопку ниже чтобы сразу написать администратору:",
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(Command("get_file_id"))
+async def get_file_id_handler(message: types.Message):
+    """Получить file_id отправленного медиа"""
+    if not await is_admin(message.from_user.id):
+        await message.answer("У вас нет прав для этой команды")
+        return
+
+    file_info = None
+    file_type = None
+
+    if message.photo:
+        file_info = message.photo[-1]
+        file_type = "photo"
+    elif message.document:
+        file_info = message.document
+        file_type = "document"
+
+    if file_info:
+        await message.answer(
+            f"📁 <b>File ID получен!</b>\n\n"
+            f"📊 Тип: {file_type}\n"
+            f"🆔 File ID: <code>{file_info.file_id}</code>\n\n"
+            f"💡 <b>Теперь используйте команду /add_free_post для создания поста</b>",
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(
+            "Отправьте мне фото или документ, и я покажу их file_id."
+        )
+
+
+@router.message(Command("list_free_posts"))
+async def list_free_posts_handler(message: types.Message):
+    """Показать все активные посты для бесплатной рассылки"""
+    async with get_db_session() as session:
+        try:
+            if not await is_admin(message.from_user.id):
+                await message.answer("У вас нет прав для этой команды")
+                return
+
+            result = await session.execute(
+                select(FreeDailyPost)
+                .where(FreeDailyPost.is_active == True)
+                .order_by(FreeDailyPost.created_at.desc())
+            )
+            posts = result.scalars().all()
+
+            if not posts:
+                await message.answer("📭 Нет активных постов для бесплатной рассылки")
+                return
+
+            text = "📋 <b>Активные посты для бесплатной рассылки:</b>\n\n"
+
+            for i, post in enumerate(posts, 1):
+                has_photo = "📷" if post.photo_file_id else "📝"
+                text += (
+                    f"{i}. {has_photo} <b>ID:</b> {post.id}\n"
+                    f"   <b>Текст:</b> {post.content[:50]}...\n"
+                    f"   <b>Время:</b> {post.scheduled_time}\n"
+                    f"   <b>Создан:</b> {post.created_at.strftime('%d.%m.%Y %H:%M')}\n\n"
+                )
+
+            await message.answer(text, parse_mode="HTML")
+
+        except Exception as e:
+            print(f"❌ Ошибка в /list_free_posts: {e}")
+            await message.answer("Произошла ошибка.")
+
+
+@router.message(Command("delete_free_post"))
+async def delete_free_post_handler(message: types.Message):
+    """Удалить пост из бесплатной рассылки"""
+    async with get_db_session() as session:
+        try:
+            if not await is_admin(message.from_user.id):
+                await message.answer("У вас нет прав для этой команды")
+                return
+
+            args = message.text.split()
+            if len(args) < 2:
+                await message.answer(
+                    "Использование: /delete_free_post <ID_поста>\n"
+                    "Список постов: /list_free_posts"
+                )
+                return
+
+            post_id = int(args[1])
+            post = await session.get(FreeDailyPost, post_id)
+
+            if not post:
+                await message.answer("❌ Пост с таким ID не найден")
+                return
+
+            post.is_active = False
+            await session.commit()
+
+            await message.answer(f"✅ Пост ID {post_id} деактивирован")
+
+        except ValueError:
+            await message.answer("❌ Неверный формат ID. ID должен быть числом.")
+        except Exception as e:
+            print(f"❌ Ошибка в /delete_free_post: {e}")
+            await message.answer("Произошла ошибка.")
+
+
+@router.message(Command("add_free_post"))
+async def start_free_post_creation(message: types.Message, state: FSMContext):
+    """Начать создание поста для бесплатной рассылки"""
+    try:
+        if not await is_admin(message.from_user.id):
+            await message.answer("❌ У вас нет прав для этой команды")
+            return
+
+        # Создаем клавиатуру для выбора
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            types.InlineKeyboardButton(text="📷 Добавить фото", callback_data="add_photo"),
+            types.InlineKeyboardButton(text="📝 Только текст", callback_data="skip_photo")
+        )
+        builder.row(types.InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_creation"))
+
+        await message.answer(
+            "📝 <b>Создание нового поста для бесплатной рассылки</b>\n\nВыберите тип поста:",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
+        await state.set_state(FreePostCreation.waiting_for_photo)
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в start_free_post_creation: {e}")
+        await message.answer("❌ Произошла непредвиденная ошибка. Попробуйте позже.")
+
+
+@router.callback_query(FreePostCreation.waiting_for_photo, F.data == "cancel_creation")
+@router.callback_query(FreePostCreation.waiting_for_content, F.data == "cancel_creation")
+@router.callback_query(FreePostCreation.confirming_post, F.data == "cancel_creation")
+async def cancel_creation(callback: types.CallbackQuery, state: FSMContext):
+    """Отмена создания поста из любого состояния"""
+    try:
+        await safe_edit_message(callback, "❌ Создание поста отменено.")
+        await state.clear()
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"❌ Ошибка при отмене создания поста: {e}")
+        try:
+            await callback.message.answer("❌ Создание поста отменено.")
+        except:
+            pass
+        await state.clear()
+        await callback.answer()
+
+
+async def safe_edit_message(callback: types.CallbackQuery, text: str, reply_markup=None, parse_mode=None):
+    """
+    Безопасное редактирование сообщения, работает с любым типом контента
+    """
+    try:
+        # Пытаемся определить тип сообщения
+        has_photo = callback.message.photo is not None and len(callback.message.photo) > 0
+        has_text = callback.message.text is not None
+
+        if has_photo:
+            # Для сообщений с фото редактируем подпись
+            await callback.message.edit_caption(
+                caption=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode
+            )
+        elif has_text:
+            # Для текстовых сообщений редактируем текст
+            await callback.message.edit_text(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode
+            )
+        else:
+            # Если непонятный тип, отправляем новое сообщение
+            raise Exception("Неизвестный тип сообщения")
+
+    except Exception as edit_error:
+        logger.warning(f"⚠️ Не удалось отредактировать сообщение: {edit_error}")
+        try:
+            # Пытаемся отправить новое сообщение
+            if has_photo:
+                # Если было фото, отправляем текстовое сообщение
+                await callback.message.answer(
+                    text,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode
+                )
+            else:
+                # Иначе просто отправляем новое сообщение
+                await callback.message.answer(
+                    text,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode
+                )
+        except Exception as answer_error:
+            logger.error(f"❌ Не удалось отправить новое сообщение: {answer_error}")
+            # Последняя попытка - просто текст
+            try:
+                await callback.message.answer("❌ Ошибка отображения. Продолжаем...")
+            except:
+                pass  # Если ничего не работает, просто продолжаем
+
+
+@router.callback_query(FreePostCreation.waiting_for_photo, F.data.in_(["add_photo", "skip_photo"]))
+async def process_photo_choice(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора типа поста"""
+    try:
+        if callback.data == "skip_photo":
+            await state.update_data(photo_file_id=None)
+            await callback.message.edit_text(
+                "📝 <b>Введите текст поста:</b>\n\nНапишите текст, который будет отправлен в бесплатной рассылке.",
+                parse_mode="HTML"
+            )
+            await state.set_state(FreePostCreation.waiting_for_content)
+        else:
+            await callback.message.edit_text(
+                "📷 <b>Отправьте фото для поста:</b>\n\nПришлите изображение, которое будет добавлено к посту.",
+                parse_mode="HTML"
+            )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в process_photo_choice: {e}")
+        await callback.message.edit_text("❌ Произошла ошибка. Попробуйте снова.")
+        await state.clear()
+
+
+@router.message(FreePostCreation.waiting_for_photo, F.photo)
+async def process_post_photo(message: types.Message, state: FSMContext):
+    """Обработка фото для поста"""
+    try:
+        photo = message.photo[-1]
+        file_id = photo.file_id
+
+        await state.update_data(photo_file_id=file_id)
+
+        await message.answer(
+            "✅ <b>Фото получено!</b>\n\n📝 <b>Теперь введите текст поста:</b>",
+            parse_mode="HTML"
+        )
+        await state.set_state(FreePostCreation.waiting_for_content)
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в process_post_photo: {e}")
+        await message.answer("❌ Ошибка при обработке фото. Попробуйте еще раз.")
+
+
+@router.message(FreePostCreation.waiting_for_content, F.text)
+async def process_post_content(message: types.Message, state: FSMContext):
+    """Обработка текста поста"""
+    try:
+        content = message.text.strip()
+
+        if not content:
+            await message.answer("❌ Текст поста не может быть пустым. Введите текст:")
+            return
+
+        await state.update_data(content=content)
+        data = await state.get_data()
+        await show_post_preview(message, data)
+        await state.set_state(FreePostCreation.confirming_post)
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в process_post_content: {e}")
+        await message.answer("❌ Ошибка при обработке текста. Попробуйте еще раз.")
+
+
+async def show_post_preview(message: types.Message, data: dict):
+    """Показать превью поста для подтверждения"""
+    try:
+        content = data.get('content', '')
+        photo_file_id = data.get('photo_file_id')
+
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            types.InlineKeyboardButton(text="✅ Опубликовать", callback_data="publish_post"),
+            types.InlineKeyboardButton(text="✏️ Изменить текст", callback_data="edit_content")
+        )
+
+        if photo_file_id:
+            builder.row(
+                types.InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_creation")
+            )
+        else:
+            builder.row(types.InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_creation"))
+
+        preview_text = f"👁 <b>Предпросмотр поста:</b>\n\n{content}\n\n{'📷 <i>Пост будет с фото</i>' if photo_file_id else '📝 <i>Текстовый пост</i>'}"
+
+        if photo_file_id:
+            await message.answer_photo(
+                photo=photo_file_id,
+                caption=preview_text,
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer(preview_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в show_post_preview: {e}")
+        await message.answer("❌ Ошибка при создании превью. Попробуйте еще раз.")
+
+
+@router.callback_query(FreePostCreation.confirming_post, F.data.in_(["publish_post", "edit_content", "edit_photo"]))
+async def handle_confirmation_actions(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка действий подтверждения с правильным редактированием"""
+    try:
+        if callback.data == "publish_post":
+            await publish_post(callback, state)
+        elif callback.data == "edit_content":
+            await safe_edit_message(
+                callback,
+                "📝 <b>Введите новый текст поста:</b>",
+                parse_mode="HTML"
+            )
+            await state.set_state(FreePostCreation.waiting_for_content)
+        elif callback.data == "edit_photo":
+            await safe_edit_message(
+                callback,
+                "📷 <b>Отправьте новое фото для поста:</b>",
+                parse_mode="HTML"
+            )
+            await state.set_state(FreePostCreation.waiting_for_photo)
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в handle_confirmation_actions: {e}")
+        # Если не удалось отредактировать, отправляем новое сообщение
+        try:
+            await callback.message.answer("❌ Произошла ошибка. Попробуйте снова.")
+        except:
+            pass  # Если и это не сработает, просто игнорируем
+        await state.clear()
+
+
+async def publish_post(callback: types.CallbackQuery, state: FSMContext):
+    """Опубликовать пост"""
+    async with get_db_session() as session:
+        try:
+            data = await state.get_data()
+            content = data.get('content')
+            photo_file_id = data.get('photo_file_id')
+
+            if not content:
+                await callback.message.edit_text("❌ Ошибка: текст поста отсутствует.")
+                await state.clear()
+                return
+
+            new_post = FreeDailyPost(content=content, photo_file_id=photo_file_id)
+            session.add(new_post)
+            await session.commit()
+
+            if photo_file_id:
+                await callback.message.answer_photo(
+                    photo=photo_file_id,
+                    caption=f"✅ <b>Пост с фото опубликован!</b>\n\n{content}",
+                    parse_mode="HTML"
+                )
+            else:
+                await callback.message.answer(f"✅ <b>Текстовый пост опубликован!</b>\n\n{content}", parse_mode="HTML")
+
+            await callback.message.delete()
+            await state.clear()
+            logger.info(f"✅ Новый пост опубликован (ID: {new_post.id})")
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка публикации поста: {e}")
+            await session.rollback()
+            await callback.message.edit_text("❌ Ошибка при публикации поста. Попробуйте позже.")
+            await state.clear()

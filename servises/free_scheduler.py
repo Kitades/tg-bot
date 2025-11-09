@@ -1,16 +1,12 @@
-# services/free_scheduler.py
 import asyncio
 from datetime import datetime, time
 from aiogram import Bot
-from sqlalchemy.orm import Session
-
 from servises.daily_poster import FreePostService
 
 
 class FreePostScheduler:
-    def __init__(self, bot: Bot, db: Session):
+    def __init__(self, bot: Bot):
         self.bot = bot
-        self.db = db
         self.is_running = False
 
     async def start_free_posting(self):
@@ -19,7 +15,7 @@ class FreePostScheduler:
         while self.is_running:
             try:
                 now = datetime.now()
-                target_time = time(10, 0)  # 10:00 утра
+                target_time = time(14, 00)  # 10:00 утра
 
                 if now.time().hour == target_time.hour and now.time().minute == target_time.minute:
                     await self.send_free_posts()
@@ -32,26 +28,19 @@ class FreePostScheduler:
                 await asyncio.sleep(60)
 
     async def send_free_posts(self):
-        """Отправить бесплатные посты пользователям без подписки"""
-        print(f"Начинаем бесплатную рассылку в {datetime.now()}")
 
         # Получаем пост на сегодня
         post = await FreePostService.get_today_free_post()
         if not post:
             print("Нет активного бесплатного поста для рассылки")
             return
-
         # Получаем пользователей без подписки
         users_without_sub = await FreePostService.get_users_without_subscription()
-
         # Также получаем пользователей с истекшей подпиской
         users_expired_sub = await FreePostService.get_users_with_expired_subscription()
-
-        # Объединяем списки (убираем дубликаты)
+        # Объединяем списки
         all_users = list(set(users_without_sub + users_expired_sub))
-
         print(f"Найдено {len(all_users)} пользователей для бесплатной рассылки")
-
         success_count = 0
         fail_count = 0
 

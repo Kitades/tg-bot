@@ -1,7 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Numeric, Index, BigInteger
-from sqlalchemy.orm import relationship, validates
+from sqlalchemy.orm import relationship
 from datetime import datetime
-import re
 
 from database.session import Base
 
@@ -19,18 +18,12 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
+    user_settings = relationship("UserSettings", back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index('ix_user_telegram_id', 'telegram_id'),
         Index('ix_user_username', 'username'),
     )
-
-    # @validates('username')
-    # def validate_username(self, key, username):
-    #     """Валидация username"""
-    #     if username and not username.startswith('@'):
-    #         username = f'@{username}'
-    #     return username
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username})>"
@@ -40,9 +33,11 @@ class UserSettings(Base):
     __tablename__ = 'user_settings'
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     wants_free_posts = Column(Boolean, default=True)
     timezone = Column(String, default="UTC")
+
+    user = relationship("User", back_populates="user_settings")
 
 
 class FreeDailyPost(Base):
@@ -51,6 +46,7 @@ class FreeDailyPost(Base):
     id = Column(Integer, primary_key=True)
     content = Column(Text, nullable=False)
     photo_path = Column(String, nullable=True)
+    photo_file_id = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     scheduled_time = Column(String, default="10:00")  # Время для бесплатной рассылки
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -85,28 +81,6 @@ class Subscription(Base):
         Index('ix_subscription_status', 'status'),
         Index('ix_subscription_payment_id', 'payment_id'),
     )
-
-    # @validates('plan_type')
-    # def validate_plan_type(self, key, plan_type):
-    #     valid_types = ['regular', 'student', 'trial']
-    #     if plan_type not in valid_types:
-    #         raise ValueError(f"Invalid plan type. Must be one of: {valid_types}")
-    #     return plan_type
-    #
-    # @validates('status')
-    # def validate_status(self, key, status):
-    #     valid_statuses = ['pending', 'active', 'canceled', 'expired']
-    #     if status not in valid_statuses:
-    #         raise ValueError(f"Invalid status. Must be one of: {valid_statuses}")
-    #     return status
-
-    def is_active(self):
-        return self.status == 'active' and self.end_date and self.end_date > datetime.utcnow()
-
-    def days_remaining(self):
-        if self.is_active() and self.end_date:
-            return (self.end_date - datetime.utcnow()).days
-        return 0
 
     def __repr__(self):
         return f"<Subscription(id={self.id}, user_id={self.user_id}, status={self.status})>"
