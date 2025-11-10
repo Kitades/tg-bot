@@ -8,7 +8,7 @@ from servises.free_scheduler import FreePostScheduler
 
 async def main():
     await check_connection()
-    await create_tables()
+    # await create_tables()
     dp.include_router(router)
 
     free_scheduler = FreePostScheduler(bot)

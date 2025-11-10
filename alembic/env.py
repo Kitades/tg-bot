@@ -5,6 +5,11 @@ from sqlalchemy import pool
 
 from alembic import context
 
+from config import DATABASE_URL
+from database.models import User
+
+
+from database.session import Base
 
 config = context.config
 
@@ -12,8 +17,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+config.set_main_option("sqlalchemy.url", DATABASE_URL + "?async_fallback=True")
 
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
@@ -38,7 +44,9 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_server_default=True,
         )
 
         with context.begin_transaction():
