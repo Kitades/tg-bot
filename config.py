@@ -19,8 +19,8 @@ DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
-URL = "https://t.me/+Etm_DDqjYI81OGVi"
-USERNAME_CHANNEL = '-1003210745015'
+URL = "https://t.me/+P8gqDEd-zENlZTYy"
+USERNAME_CHANNEL = '-1002908820618'
 ADMIN_IDS = [91211500, 384110333]
 
 # Инициализация бота и диспетчера
