@@ -1,4 +1,7 @@
+import logging
 from datetime import datetime, timedelta
+from logging.handlers import RotatingFileHandler
+
 from sqlalchemy import select, text
 from sqlalchemy.orm import joinedload
 import asyncio
@@ -8,10 +11,32 @@ from database.models import Subscription, User
 from database.session import AsyncSessionLocal
 from config import bot
 from helpers import notify_admins, get_admin_ids
+from log.logger import get_logger
+from log.logging_config import setup_logging
 from servises.telegram_service import TelegramService
+
+setup_logging()
+logger = get_logger(__name__)
+
+background_logger = logging.getLogger('background_tasks')
+background_logger.setLevel(logging.INFO)
+
+# Логи в файл
+file_handler = RotatingFileHandler(
+    'logs/background.log',
+    maxBytes=10 * 1024 * 1024,
+    backupCount=3,
+    encoding='utf-8'
+)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+))
+background_logger.addHandler(file_handler)
 
 
 async def check_subscriptions():
+    logger = logging.getLogger('background_tasks')
+    logger.info("Запуск проверки подписок...")
     """Проверка и деактивация просроченных подписок"""
     while True:
         try:
@@ -43,9 +68,9 @@ async def check_subscriptions():
                                 "Для возобновления доступа приобретите новую подписку.",
                                 parse_mode='HTML'
                             )
-                            print(f"📧 Уведомление отправлено пользователю {user.telegram_id}")
+                            logger.info(f"📧 Уведомление отправлено пользователю {user.telegram_id}")
                         except Exception as e:
-                            print(f"❌ Ошибка отправки уведомления: {e}")
+                            logger.error(f"❌ Ошибка отправки уведомления: {e}")
 
                     subscription.status = 'expired'
                     subscription.updated_at = datetime.utcnow()
@@ -55,25 +80,25 @@ async def check_subscriptions():
                             bot, user.telegram_id, USERNAME_CHANNEL)
 
                     except Exception as e:
-                        print(f"{e}")
+                        logger.error(f"{e}")
                         success = False
                         await TelegramService.unban_from_channel(bot, user.telegram_id, USERNAME_CHANNEL)
                     if success:
-                        print(f"🔴 Подписка {subscription.id} деактивирована (просрочена)")
+                        logger.info(f"🔴 Подписка {subscription.id} деактивирована (просрочена)")
                     else:
-                        print(f"🔴 У {user.telegram_id} , не удалось удалить подписку")
+                        logger.info(f"🔴 У {user.telegram_id} , не удалось удалить подписку")
 
                     # Получаем пользователя для отправки уведомления
 
                 # Коммитим изменения в базе
                 if expired_subscriptions:
                     await session.commit()
-                    print(f"✅ Деактивировано {len(expired_subscriptions)} подписок")
+                    logger.info(f"✅ Деактивировано {len(expired_subscriptions)} подписок")
 
         except Exception as e:
-            print(f"❌ Ошибка в check_subscriptions: {e}")
+            logger.error(f"Ошибка в check_subscriptions: {e}")
 
-        await asyncio.sleep(30)  # Проверяем каждый день
+        await asyncio.sleep(24 * 3600)  # Проверяем каждый день
 
 
 async def send_daily_report():
@@ -116,10 +141,10 @@ async def send_daily_report():
                     )
 
                     success_count, fail_count = await notify_admins(bot, report_text, parse_mode='HTML')
-                    print(f"📊 Отчет отправлен: {success_count} успешно, {fail_count} с ошибкой")
+                    logger.info(f"📊 Отчет отправлен: {success_count} успешно, {fail_count} с ошибкой")
 
         except Exception as e:
-            print(f"❌ Ошибка в send_daily_report: {e}")
+            logger.error(f"❌ Ошибка в send_daily_report: {e}")
 
         await asyncio.sleep(24 * 3600)
 
