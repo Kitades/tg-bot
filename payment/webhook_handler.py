@@ -67,6 +67,10 @@ class WebhookHandler:
             logger.error(f"Ошибка обработки вебхука: {str(e)}", exc_info=True)
             return web.Response(status=500, text="Internal error")
 
+    async def handle_webhook_test(self, request):
+
+        return web.Response(text="OK", status=200)
+
     async def _handle_payment_succeeded(self, payment_data: dict):
         """Обработка успешного платежа"""
         payment_id = payment_data.get('id')

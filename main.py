@@ -29,6 +29,7 @@ async def main():
 
 
         app.router.add_post('/yookassa_webhook', webhook_handler.handle_webhook)
+        app.router.add_get('/yookassa_webhook', webhook_handler.handle_webhook_test)
         logger.info("Вебхук для ЮКассы настроен")
 
         setup_application(app, dp, bot=bot)
