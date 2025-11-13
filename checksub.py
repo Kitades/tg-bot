@@ -6,7 +6,7 @@ import asyncio
 from config import ADMIN_IDS, USERNAME_CHANNEL
 from database.models import Subscription, User
 from database.session import AsyncSessionLocal
-from config import bot  # Или правильный импорт вашего бота
+from config import bot
 from helpers import notify_admins, get_admin_ids
 from servises.telegram_service import TelegramService
 

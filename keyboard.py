@@ -2,7 +2,9 @@ from aiogram import types
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from config import SUBSCRIPTION_PRICE
+from config import SUBSCRIPTION_PRICE, URL
+from database.models import Subscription
+from log import logger
 
 welcome_text = (
     "👋 Приветсвуем вас в чате вступления в канал Потяева Владимира о стоматологии.\n"
@@ -71,23 +73,34 @@ async def back_main(callback, has_active_sub):
 
 async def show_tariff_selection(callback: types.CallbackQuery):
     """Показывает выбор тарифов"""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    keyboard = [
         [
-            InlineKeyboardButton(text=f"💳 Обычный - {SUBSCRIPTION_PRICE[1]}₽", callback_data="tariff_regular"),
-            InlineKeyboardButton(text=f"🎓 Студент - {SUBSCRIPTION_PRICE[0]}₽", callback_data="tariff_student")
+            types.InlineKeyboardButton(
+                text=f"💼 Обычный - {SUBSCRIPTION_PRICE[1]} руб/мес",
+                callback_data="tariff_regular"
+            )
         ],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="back_to_main")]
-    ])
+        [
+            types.InlineKeyboardButton(
+                text=f"🎓 Студенческий - {SUBSCRIPTION_PRICE[0]} руб/мес",
+                callback_data="tariff_student"
+            )
+        ]
+    ]
+    markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     await callback.message.answer(
-        "🎯 <b>Выберите тариф:</b>\n\n"
-        f"💳 <b>Обычный</b> - {SUBSCRIPTION_PRICE[1]}₽/месяц\n"
-        "• Полный доступ к контенту\n\n"
-        f"🎓 <b>Студенческий</b> - {SUBSCRIPTION_PRICE[0]}₽/месяц\n"
-        "• Требуется подтверждение статуса\n"
-        "• Полный доступ к контенту",
-        parse_mode='HTML',
-        reply_markup=keyboard
+        " Выберите тарифный план:\n\n"
+        f"💼 <b>Обычный</b> - {SUBSCRIPTION_PRICE[1]} руб/мес\n"
+        "• Полный доступ ко всем материалам\n"
+        "• Автоматическое продление\n\n"
+        f"🎓 <b>Студенческий</b> - {SUBSCRIPTION_PRICE[0]} руб/мес\n"
+        "• Полный доступ ко всем материалам  \n"
+        "• Специальная цена для студентов\n"
+        "• Автоматическое продление\n\n"
+        "После оплаты доступ откроется автоматически!",
+        reply_markup=markup,
+        parse_mode="HTML"
     )
 
 
@@ -109,21 +122,35 @@ async def _process_tariff_selection(callback, subscription, payment):
     )
 
 
-async def _check_payment(callback, subscription, URL):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 Перейти в канал", url=f"{URL}")],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="my_subscription")]
-    ])
+async def _check_payment(callback: types.CallbackQuery, subscription: Subscription, group_url: str = None):
+    """Обрабатывает успешную оплату"""
+    try:
+        # Добавляем пользователя в группу
+        if group_url:
+            try:
+                await callback.bot.unban_chat_member(
+                    chat_id=URL,
+                    user_id=callback.from_user.id
+                )
+            except Exception as e:
+                logger.warning(f"Ошибка добавления в группу: {str(e)}")
 
-    await callback.message.answer(
-        f"🎉 <b>Подписка активирована!</b>\n\n"
-        f"📅 Действует до: {subscription.end_date.strftime('%d.%m.%Y')}\n"
-        f"💳 Тариф: {subscription.plan_name}\n"
-        f"💰 Сумма: {subscription.price:.2f}₽\n\n"
-        f"Теперь вам доступен эксклюзивный контент!",
-        parse_mode='HTML',
-        reply_markup=keyboard
-    )
+        message_text = (
+            f"✅ <b>Подписка активирована!</b>\n\n"
+            f"📋 Тариф: <b>{subscription.plan_name}</b>\n"
+            f"💰 Стоимость: <b>{subscription.price} руб</b>\n"
+            f"📅 Доступ до: <b>{subscription.end_date.strftime('%d.%m.%Y')}</b>\n"
+            f"🔄 Автоплатеж: <b>{'Включен' if subscription.auto_renew else 'Отключен'}</b>\n\n"
+        )
+
+        if group_url:
+            message_text += f"🔗 Ссылка на группу: {group_url}"
+
+        await callback.message.answer(message_text, parse_mode="HTML")
+        logger.info(f"Подписка {subscription.id} активирована для пользователя {callback.from_user.id}")
+
+    except Exception as e:
+        logger.error(f"Ошибка обработки успешной оплаты: {str(e)}", exc_info=True)
 
 
 async def _content_handler(callback, URL):

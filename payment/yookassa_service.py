@@ -1,114 +1,142 @@
+import logging
+
 import aiohttp
 import uuid
-import json
-from datetime import datetime
+from datetime import datetime, timedelta
+from yookassa import Payment
+from sqlalchemy import select, update
 from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, YOOKASSA_WEBHOOK_URL, URL
+from log.logger import get_logger, log_execution
+
+from database.models import Subscription
+from database.session import get_db_session
+
+logger = logging.getLogger(__name__)
 
 
 class YooKassaService:
-    def __init__(self):
-        self.base_url = "https://api.yookassa.ru/v3"
-        self.auth = aiohttp.BasicAuth(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
-        self.headers = {
-            'Idempotence-Key': None,
-            'Content-Type': 'application/json'
-        }
 
-    async def create_payment(self, subscription_id: int, amount: float, user_id: int,
-                             description: str = "Оплата подписки") -> dict:
-        """Создает платеж в ЮКассе"""
-        payment_id = str(uuid.uuid4())
+    @staticmethod
+    @log_execution(__name__)
+    async def create_autopay_subscription(user_id: int, plan_data: dict, email: str = None):
+        """Создание подписки с автосписанием"""
+        try:
+            logger.info(f"Создание автоподписки для пользователя {user_id}, план: {plan_data['plan_name']}")
 
-        payload = {
-            "amount": {
-                "value": f"{amount:.2f}",
-                "currency": "RUB"
-            },
-            "confirmation": {
-                "type": "redirect",
-                "return_url": f"{URL}" #{subscription_id}
-            },
-            "capture": True,
-            "description": description,
-            "metadata": {
-                "subscription_id": subscription_id,
-                "user_id": user_id
-            },
-            "receipt": {
-                "customer": {
-                    "email": "user@example.com"  # Можно получить из профиля пользователя
+            payment = Payment.create({
+                "amount": {
+                    "value": f"{plan_data['price']:.2f}",
+                    "currency": "RUB"
                 },
-                "items": [
-                    {
-                        "description": "Подписка на информационный канал по стоматологии",
-                        "quantity": "1",
-                        "amount": {
-                            "value": f"{amount:.2f}",
-                            "currency": "RUB"
-                        },
-                        "vat_code": "1",
-                        "payment_mode": "full_payment",
-                        "payment_subject": "service"
+                "payment_method_data": {
+                    "type": "bank_card"
+                },
+                "confirmation": {
+                    "type": "redirect",
+                    "return_url": f"{URL}"
+                },
+                "capture": True,
+                "save_payment_method": True,  # Сохраняем метод оплаты для автоплатежей
+                "description": f"Подписка: {plan_data['plan_name']}",
+                "metadata": {
+                    "user_id": user_id,
+                    "email": email or "",
+                    "plan_type": plan_data['plan_type'],
+                    "type": "initial_subscription"
+                }
+            }, str(uuid.uuid4()))
+
+            logger.info(f"Платеж создан: {payment.id}, статус: {payment.status}")
+            return payment.confirmation.confirmation_url, payment.id
+
+        except Exception as e:
+            logger.error(f"Ошибка создания автоподписки для {user_id}: {str(e)}", exc_info=True)
+            raise
+
+    @staticmethod
+    @log_execution(__name__)
+    async def process_auto_payment(user_id: int):
+        """Обработка автоматического списания"""
+        logger.info(f"Запуск автоплатежа для пользователя {user_id}")
+
+        try:
+            async with get_db_session() as session:
+                # Ищем активную подписку с включенным автосписанием
+                result = await session.execute(
+                    select(Subscription).where(
+                        Subscription.user_id == user_id,
+                        Subscription.status == 'active',
+                        Subscription.auto_renew == True,
+                        Subscription.payment_method.isnot(None)
+                    )
+                )
+                subscription = result.scalar_one_or_none()
+
+                if not subscription:
+                    error_msg = f"Нет активной подписки с методом оплаты для пользователя {user_id}"
+                    logger.warning(error_msg)
+                    raise Exception(error_msg)
+
+                logger.debug(f"Найден метод оплаты: {subscription.payment_method}")
+
+                # Создаем автоплатеж
+                payment = Payment.create({
+                    "amount": {
+                        "value": f"{float(subscription.price):.2f}",
+                        "currency": subscription.currency or "RUB"
+                    },
+                    "payment_method_id": subscription.payment_method,
+                    "description": f"Автоматическое списание: {subscription.plan_name}",
+                    "metadata": {
+                        "user_id": user_id,
+                        "type": "auto_payment",
+                        "subscription_id": subscription.id
                     }
-                ]
-            }
-        }
+                }, str(uuid.uuid4()))
 
-        async with aiohttp.ClientSession() as session:
-            self.headers['Idempotence-Key'] = payment_id
-            async with session.post(
-                    f"{self.base_url}/payments",
-                    json=payload,
-                    auth=self.auth,
-                    headers=self.headers
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {
-                        'payment_id': data['id'],
-                        'confirmation_url': data['confirmation']['confirmation_url'],
-                        'status': data['status']
-                    }
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"YooKassa error: {response.status} - {error_text}")
+                logger.info(f"Автоплатеж создан: {payment.id}, статус: {payment.status}")
+                return payment.id, payment.status
 
-    async def check_payment(self, payment_id: str) -> dict:
-        """Проверяет статус платежа"""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                    f"{self.base_url}/payments/{payment_id}",
-                    auth=self.auth
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {
-                        'status': data['status'],
-                        'paid': data.get('paid', False),
-                        'amount': data['amount']['value'],
-                        'metadata': data.get('metadata', {})
-                    }
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"YooKassa error: {response.status} - {error_text}")
+        except Exception as e:
+            logger.error(f"Ошибка автоплатежа для {user_id}: {str(e)}", exc_info=True)
+            raise
 
-    async def process_webhook(self, data: dict) -> dict:
-        """Обрабатывает вебхук от ЮКассы"""
-        event = data.get('event')
-        payment_data = data.get('object', {})
+    @staticmethod
+    @log_execution(__name__)
+    async def cancel_auto_payments(user_id: int):
+        """Отмена всех автоплатежей для пользователя"""
+        logger.info(f"Отмена автоплатежей для пользователя {user_id}")
 
-        if event == 'payment.succeeded':
-            return {
-                'success': True,
-                'payment_id': payment_data['id'],
-                'subscription_id': payment_data['metadata'].get('subscription_id'),
-                'user_id': payment_data['metadata'].get('user_id'),
-                'amount': payment_data['amount']['value'],
-                'paid': True
-            }
+        try:
+            async with get_db_session() as session:
+                # Отключаем автосписание в подписке
+                result = await session.execute(
+                    update(Subscription).where(
+                        Subscription.user_id == user_id,
+                        Subscription.status == 'active'
+                    ).values(
+                        auto_renew=False,
+                        updated_at=datetime.utcnow()
+                    )
+                )
 
-        return {'success': False, 'event': event}
+                if result.rowcount == 0:
+                    logger.warning(f"Не найдено активных подписок для отмены у пользователя {user_id}")
+                    return False
 
+                logger.info(f"Автоплатежи отменены для пользователя {user_id}")
+                return True
 
-# Создаем экземпляр сервиса
-yookassa_service = YooKassaService()
+        except Exception as e:
+            logger.error(f"Ошибка отмены автоплатежей для {user_id}: {str(e)}", exc_info=True)
+            return False
+
+    @staticmethod
+    async def get_payment_method_id(payment_id: str):
+        """Получаем ID привязанного метода оплаты"""
+        try:
+            payment = Payment.find_one(payment_id)
+            return payment.payment_method.id if payment.payment_method else None
+        except Exception as e:
+            logger.error(f"Ошибка получения метода оплаты: {e}")
+            return None

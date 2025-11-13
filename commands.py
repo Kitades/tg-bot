@@ -14,7 +14,8 @@ from keyboard import main_keyboard, show_tariff_selection, _process_tariff_selec
     _content_handler_false, back_main, my_subscription, my_subscription_inactive
 import logging
 
-from payment import yookassa_service
+
+from payment.yookassa_service import YooKassaService
 from servises.daily_poster import FreePostService
 from states.subscription_states import FreePostCreation
 
@@ -74,6 +75,8 @@ async def cmd_start(message: types.Message):
 
 async def check_active_subscription(user_id: int) -> bool:
     """Проверяет есть ли активная подписка"""
+    logger.debug(f"Проверка активной подписки для пользователя {user_id}")
+
     async with get_db_session() as session:
         result = await session.execute(
             select(Subscription)
@@ -81,11 +84,20 @@ async def check_active_subscription(user_id: int) -> bool:
             .where(Subscription.status == 'active')
             .where(Subscription.end_date > datetime.utcnow())
         )
-        return result.scalar_one_or_none() is not None
+        subscription = result.scalar_one_or_none()
+
+        if subscription:
+            logger.debug(f"Найдена активная подписка {subscription.id} для пользователя {user_id}")
+        else:
+            logger.debug(f"Активная подписка для пользователя {user_id} не найдена")
+
+        return subscription is not None
 
 
 async def get_subscription_info(user_id: int) -> dict:
     """Получает информацию о подписке"""
+    logger.debug(f"Получение информации о подписке для пользователя {user_id}")
+
     async with get_db_session() as session:
         result = await session.execute(
             select(Subscription)
@@ -97,11 +109,15 @@ async def get_subscription_info(user_id: int) -> dict:
         sub = result.scalar_one_or_none()
 
         if sub:
-            return {
+            days_left = (sub.end_date - datetime.utcnow()).days
+            info = {
                 'plan_name': sub.plan_name,
                 'end_date': sub.end_date.strftime('%d.%m.%Y'),
-                'days_left': (sub.end_date - datetime.utcnow()).days
+                'days_left': days_left,
+                'auto_renew': sub.auto_renew
             }
+            logger.debug(f"Информация о подписке: {info}")
+            return info
         return {}
 
 
@@ -109,6 +125,7 @@ async def get_subscription_info(user_id: int) -> dict:
 async def buy_subscription(callback: types.CallbackQuery):
     """Обработка кнопки покупки подписки"""
     user_id = callback.from_user.id
+    logger.info(f"Пользователь {user_id} начал покупку подписки")
 
     async with get_db_session() as session:
         try:
@@ -118,25 +135,30 @@ async def buy_subscription(callback: types.CallbackQuery):
             user = user_result.scalar_one_or_none()
 
             if not user:
+                logger.warning(f"Пользователь {user_id} не найден в БД")
                 await callback.answer("❌ Сначала используйте /start")
                 return
 
+            # Проверяем активную подписку
             if await check_active_subscription(user.id):
                 sub_info = await get_subscription_info(user.id)
-                await callback.message.answer(
+                message = (
                     f"⚠️ У вас уже есть активная подписка!\n\n"
                     f"📅 Действует до: {sub_info['end_date']}\n"
-                    f"⏳ Осталось дней: {sub_info['days_left']}"
+                    f"⏳ Осталось дней: {sub_info['days_left']}\n"
+                    f"🔄 Автоплатеж: {'✅ Включен' if sub_info['auto_renew'] else '❌ Выключен'}"
                 )
+                await callback.message.answer(message)
                 await callback.answer()
                 return
 
             await show_tariff_selection(callback)
             await callback.answer()
+            logger.info(f"Показан выбор тарифов для пользователя {user_id}")
 
         except Exception as e:
-            print(f"❌ Ошибка покупки подписки: {e}")
-            await callback.message.answer("❌ Произошла ошибка")
+            logger.error(f"Ошибка покупки подписки: {str(e)}", exc_info=True)
+            await callback.message.answer("❌ Произошла ошибка при обработке запроса")
             await callback.answer()
 
 
@@ -145,6 +167,13 @@ async def process_tariff_selection(callback: types.CallbackQuery):
     """Обработка выбора тарифа"""
     tariff_type = callback.data.replace("tariff_", "")
     user_id = callback.from_user.id
+
+    logger.info(f"Пользователь {user_id} выбрал тариф: {tariff_type}")
+
+    if tariff_type not in PRICES:
+        logger.warning(f"Неизвестный тип тарифа: {tariff_type}")
+        await callback.answer("❌ Неизвестный тариф")
+        return
 
     async with get_db_session() as session:
         try:
@@ -157,42 +186,63 @@ async def process_tariff_selection(callback: types.CallbackQuery):
                 await callback.answer("❌ Пользователь не найден")
                 return
 
+            # Определяем название плана
+            plan_name = "Обычный" if tariff_type == "regular" else "Студенческий"
+            price = PRICES[tariff_type]
+
+            # Создаем запись о подписке
             subscription = Subscription(
                 user_id=user.id,
                 plan_type=tariff_type,
-                plan_name="Обычный" if tariff_type == "regular" else "Студенческий",
-                price=PRICES[tariff_type],
+                plan_name=plan_name,
+                price=price,
                 currency="RUB",
                 status="pending",
-                payment_status="pending"
+                payment_status="pending",
+                auto_renew=True  # Включаем автосписание по умолчанию
             )
             session.add(subscription)
             await session.commit()
             await session.refresh(subscription)
 
+            logger.info(f"Создана подписка {subscription.id} для пользователя {user_id}")
+
             try:
-                payment = await yookassa_service.create_payment(
-                    subscription_id=subscription.id,
-                    amount=subscription.price,
+                # Создаем платеж в ЮKассе
+                payment_url, payment_id = await YooKassaService.create_autopay_subscription(
                     user_id=user.id,
-                    description=f"Подписка: {subscription.plan_name}"
+                    plan_data={
+                        'plan_type': tariff_type,
+                        'plan_name': plan_name,
+                        'price': float(price)
+                    },
+                    # email=user.email  # Если есть email пользователя
                 )
 
-                subscription.payment_id = payment['payment_id']
+                # Обновляем подписку с payment_id
+                subscription.payment_id = payment_id
                 await session.commit()
 
-                await _process_tariff_selection(callback, subscription, payment)
+                # Отправляем пользователю ссылку на оплату
+                await _process_tariff_selection(callback, subscription, {
+                    'confirmation_url': payment_url,
+                    'id': payment_id
+                })
+
+                logger.info(f"Платеж создан для подписки {subscription.id}, payment_id: {payment_id}")
 
             except Exception as e:
-                print(f"❌ Ошибка создания платежа: {e}")
+                logger.error(f"Ошибка создания платежа: {str(e)}", exc_info=True)
                 await callback.message.answer("❌ Ошибка при создании платежа. Попробуйте позже.")
+                # Удаляем подписку если не удалось создать платеж
                 await session.delete(subscription)
                 await session.commit()
 
             await callback.answer()
+
         except Exception as e:
-            print(f"❌ Ошибка выбора тарифа: {e}")
-            await callback.message.answer("❌ Произошла ошибка")
+            logger.error(f"Ошибка выбора тарифа: {str(e)}", exc_info=True)
+            await callback.message.answer("❌ Произошла ошибка при выборе тарифа")
             await callback.answer()
 
 
@@ -201,6 +251,8 @@ async def check_payment(callback: types.CallbackQuery):
     """Проверка оплаты"""
     subscription_id = int(callback.data.replace("check_payment_", ""))
     user_id = callback.from_user.id
+
+    logger.info(f"Проверка оплаты для подписки {subscription_id} пользователем {user_id}")
 
     async with get_db_session() as session:
         try:
@@ -232,9 +284,10 @@ async def check_payment(callback: types.CallbackQuery):
 
             if subscription.payment_id:
                 try:
-                    payment_info = await yookassa_service.check_payment(subscription.payment_id)
+                    # Проверяем статус платежа через ЮKасcу
+                    payment_info = await YooKassaService.check_payment_status(subscription.payment_id)
 
-                    if payment_info['paid']:
+                    if payment_info and payment_info['status'] == 'succeeded':
                         # Активируем подписку
                         subscription.status = 'active'
                         subscription.payment_status = 'completed'
@@ -242,9 +295,16 @@ async def check_payment(callback: types.CallbackQuery):
                         subscription.end_date = datetime.utcnow() + timedelta(days=30)
                         subscription.updated_at = datetime.utcnow()
 
+                        # Сохраняем метод оплаты для автоплатежей
+                        if payment_info.get('payment_method_id'):
+                            subscription.payment_method = payment_info['payment_method_id']
+
                         await session.commit()
 
-                        await _check_payment(callback, subscription, URL)
+                        # Уведомляем пользователя
+                        await _check_payment(callback, subscription, config.GROUP_CHAT_ID)
+
+                        logger.info(f"Подписка {subscription_id} активирована после проверки платежа")
 
                         if get_admin_ids():
                             try:
@@ -254,16 +314,18 @@ async def check_payment(callback: types.CallbackQuery):
                                     subscription
                                 )
                             except Exception as e:
-                                print(f"❌ Ошибка уведомления админу: {e}")
+                                logger.error(f"Ошибка уведомления админу: {str(e)}")
 
                     else:
+                        status = payment_info['status'] if payment_info else 'unknown'
                         await callback.message.answer(
-                            f"⌛ Платеж в статусе: {payment_info['status']}\n"
+                            f"⌛ Платеж в статусе: {status}\n"
                             "Попробуйте проверить позже или обратитесь в поддержку."
                         )
+                        logger.info(f"Платеж для подписки {subscription_id} еще не завершен, статус: {status}")
 
                 except Exception as e:
-                    print(f"❌ Ошибка проверки платежа: {e}")
+                    logger.error(f"Ошибка проверки платежа: {str(e)}", exc_info=True)
                     await callback.message.answer("❌ Ошибка при проверке платежа. Попробуйте позже.")
             else:
                 await callback.message.answer("❌ ID платежа не найден")
@@ -271,8 +333,8 @@ async def check_payment(callback: types.CallbackQuery):
             await callback.answer()
 
         except Exception as e:
-            print(f"❌ Ошибка проверки платежа: {e}")
-            await callback.message.answer("❌ Произошла ошибка")
+            logger.error(f"Ошибка проверки платежа: {str(e)}", exc_info=True)
+            await callback.message.answer("❌ Произошла ошибка при проверке платежа")
             await callback.answer()
 
 

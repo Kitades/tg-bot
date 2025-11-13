@@ -65,6 +65,9 @@ class Subscription(Base):
 
     status = Column(String(20), default='pending', nullable=False)  # pending, active, canceled, expired
     payment_status = Column(String(20), default='pending')  # pending, completed, failed
+    subscription_id = Column(String, index=True)  # ID подписки в ЮКассе
+    auto_renew = Column(Boolean, default=True)  # Флаг автосписания
+    metadata_json = Column(Text)  # Дополнительные данные от ЮКассы
 
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
@@ -84,3 +87,4 @@ class Subscription(Base):
 
     def __repr__(self):
         return f"<Subscription(id={self.id}, user_id={self.user_id}, status={self.status})>"
+

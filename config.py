@@ -19,9 +19,18 @@ DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
-URL = "https://t.me/+P8gqDEd-zENlZTYy"
-USERNAME_CHANNEL = '-1002908820618'
-ADMIN_IDS = [91211500, 384110333]
+
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://yourdomain.com")
+WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
+WEBAPP_PORT = int(os.getenv("WEBAPP_PORT", "3000"))
+
+# URL = "https://t.me/+P8gqDEd-zENlZTYy"
+# USERNAME_CHANNEL = '-1002908820618'
+# ADMIN_IDS = [91211500, 384110333]
+
+URL = os.getenv("URL")
+USERNAME_CHANNEL = os.getenv("USERNAME_CHANNEL")
+ADMIN_IDS = [384110333]
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
