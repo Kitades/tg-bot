@@ -18,13 +18,13 @@ def log_execution(logger_name: str = None):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             logger = get_logger(logger_name or func.__module__)
-            logger.debug(f"🟢 Начало выполнения {func.__name__}")
+            logger.debug(f"Начало выполнения {func.__name__}")
             try:
                 result = await func(*args, **kwargs)
-                logger.debug(f"✅ Успешное завершение {func.__name__}")
+                logger.debug(f"Успешное завершение {func.__name__}")
                 return result
             except Exception as e:
-                logger.error(f"❌ Ошибка в {func.__name__}: {str(e)}", exc_info=True)
+                logger.error(f"Ошибка в {func.__name__}: {str(e)}", exc_info=True)
                 raise
 
         return async_wrapper

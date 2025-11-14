@@ -1,9 +1,7 @@
 import logging
-
-import aiohttp
 import uuid
-from datetime import datetime, timedelta
-from yookassa import Payment
+from datetime import datetime
+from yookassa import Payment, Configuration
 from sqlalchemy import select, update
 from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, YOOKASSA_WEBHOOK_URL, URL
 from log.logger import get_logger, log_execution
@@ -12,15 +10,31 @@ from database.models import Subscription
 from database.session import get_db_session
 
 logger = logging.getLogger(__name__)
+try:
+    Configuration.account_id = YOOKASSA_SHOP_ID
+    Configuration.secret_key = YOOKASSA_SECRET_KEY
+    logger.info(f"✅ ЮKassa сконфигурирована. Shop ID: {YOOKASSA_SHOP_ID}")
+except Exception as e:
+    logger.error(f"❌ Ошибка инициализации ЮKassa: {e}")
+    raise
 
 
 class YooKassaService:
+
+    @staticmethod
+    def _ensure_configured():
+        """Дополнительная проверка конфигурации"""
+        if not Configuration.account_id or not Configuration.secret_key:
+            error_msg = "ЮKassa не сконфигурирована. Проверьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY"
+            logger.error(error_msg)
+            raise Exception(error_msg)
 
     @staticmethod
     @log_execution(__name__)
     async def create_autopay_subscription(user_id: int, plan_data: dict, email: str = None):
         """Создание подписки с автосписанием"""
         try:
+            YooKassaService._ensure_configured()
             logger.info(f"Создание автоподписки для пользователя {user_id}, план: {plan_data['plan_name']}")
 
             payment = Payment.create({
@@ -60,6 +74,7 @@ class YooKassaService:
         logger.info(f"Запуск автоплатежа для пользователя {user_id}")
 
         try:
+            YooKassaService._ensure_configured()
             async with get_db_session() as session:
                 # Ищем активную подписку с включенным автосписанием
                 result = await session.execute(
@@ -135,6 +150,7 @@ class YooKassaService:
     async def get_payment_method_id(payment_id: str):
         """Получаем ID привязанного метода оплаты"""
         try:
+            YooKassaService._ensure_configured()
             payment = Payment.find_one(payment_id)
             return payment.payment_method.id if payment.payment_method else None
         except Exception as e:

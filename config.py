@@ -10,7 +10,7 @@ SUBSCRIPTION_PRICE = (5000.00, 8000.00, 100.00)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
-YOOKASSA_WEBHOOK_URL = os.getenv('YOOKASSA_WEBHOOK_URL', 'https://yourdomain.com/yookassa-webhook')
+YOOKASSA_WEBHOOK_URL = os.getenv('YOOKASSA_WEBHOOK_URL')
 
 # база
 DB_HOST = os.getenv("DB_HOST")

@@ -19,9 +19,8 @@ logger = get_logger(__name__)
 
 async def main():
     try:
-        logger.info("Запуск гибридного бота (web-сервер + polling)...")
+        logger.info("Запуск бота ...")
 
-        # Подключаем роутеры
         dp.include_router(router)
         logger.info("Роутеры подключены")
 
@@ -31,11 +30,9 @@ async def main():
         app.router.add_get('/yookassa_webhook', webhook_handler.handle_webhook_test)
         logger.info("Вебхук для ЮКассы настроен")
 
-        # Добавляем health-check
         async def health_check(request):
             return web.json_response({"status": "ok", "service": "yookassa-bot"})
 
-        app.router.add_get('/health', health_check)
         app.router.add_get('/status', health_check)
 
         # Инициализируем планировщики

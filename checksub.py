@@ -68,7 +68,7 @@ async def check_subscriptions():
                                 "Для возобновления доступа приобретите новую подписку.",
                                 parse_mode='HTML'
                             )
-                            logger.info(f"📧 Уведомление отправлено пользователю {user.telegram_id}")
+                            logger.info(f"Уведомление отправлено пользователю {user.telegram_id}")
                         except Exception as e:
                             logger.error(f"❌ Ошибка отправки уведомления: {e}")
 
@@ -141,7 +141,7 @@ async def send_daily_report():
                     )
 
                     success_count, fail_count = await notify_admins(bot, report_text, parse_mode='HTML')
-                    logger.info(f"📊 Отчет отправлен: {success_count} успешно, {fail_count} с ошибкой")
+                    logger.info(f" Отчет отправлен: {success_count} успешно, {fail_count} с ошибкой")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в send_daily_report: {e}")
@@ -175,7 +175,7 @@ async def check_expiring_subscriptions():
                             "Не забудьте продлить подписку для непрерывного доступа к контенту.",
                             parse_mode='HTML'
                         )
-                        print(f"📧 Напоминание отправлено пользователю {subscription.user.telegram_id}")
+                        print(f" Напоминание отправлено пользователю {subscription.user.telegram_id}")
                     except Exception as e:
                         print(f"❌ Ошибка отправки напоминания: {e}")
 
