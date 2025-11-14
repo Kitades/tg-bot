@@ -1,6 +1,8 @@
 import logging
 import uuid
 from datetime import datetime
+
+from aiogram.client.session import aiohttp
 from yookassa import Payment, Configuration
 from sqlalchemy import select, update
 from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, YOOKASSA_WEBHOOK_URL, URL
@@ -20,6 +22,14 @@ except Exception as e:
 
 
 class YooKassaService:
+    def __init__(self):
+        self.base_url = "https://api.yookassa.ru/v3"
+        self.auth = aiohttp.BasicAuth(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
+        self.headers = {
+            'Idempotence-Key': None,
+            'Content-Type': 'application/json'
+        }
+
 
     @staticmethod
     def _ensure_configured():
@@ -31,12 +41,12 @@ class YooKassaService:
 
     @staticmethod
     @log_execution(__name__)
-    async def create_autopay_subscription(user_id: int, plan_data: dict, email: str = None):
+    async def create_autopay_subscription(self, user_id: int, plan_data: dict, email: str = None):
         """Создание подписки с автосписанием"""
         try:
             YooKassaService._ensure_configured()
             logger.info(f"Создание автоподписки для пользователя {user_id}, план: {plan_data['plan_name']}")
-
+            payment_id = str(uuid.uuid4())
             payment = Payment.create({
                 "amount": {
                     "value": f"{plan_data['price']:.2f}",
@@ -59,6 +69,24 @@ class YooKassaService:
                     "type": "initial_subscription"
                 }
             }, str(uuid.uuid4()))
+            async with aiohttp.ClientSession() as session:
+                self.headers['Idempotence-Key'] = payment_id
+                async with session.post(
+                        f"{self.base_url}/payments",
+                        json=payload,
+                        auth=self.auth,
+                        headers=self.headers
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return {
+                            'payment_id': data['id'],
+                            'confirmation_url': data['confirmation']['confirmation_url'],
+                            'status': data['status']
+                        }
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"YooKassa error: {response.status} - {error_text}")
 
             logger.info(f"Платеж создан: {payment.id}, статус: {payment.status}")
             return payment.confirmation.confirmation_url, payment.id

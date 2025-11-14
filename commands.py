@@ -302,7 +302,7 @@ async def check_payment(callback: types.CallbackQuery):
                         await session.commit()
 
                         # Уведомляем пользователя
-                        await _check_payment(callback, subscription, config.GROUP_CHAT_ID)
+                        await _check_payment(callback, subscription, URL)
 
                         logger.info(f"Подписка {subscription_id} активирована после проверки платежа")
 

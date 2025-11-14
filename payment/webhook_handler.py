@@ -208,7 +208,7 @@ class WebhookHandler:
         try:
             from main import bot
             await bot.unban_chat_member(
-                chat_id=config.GROUP_CHAT_ID,
+                chat_id=GROUP_CHAT_ID,
                 user_id=user_id
             )
             await bot.send_message(
@@ -224,7 +224,7 @@ class WebhookHandler:
         try:
             from main import bot
             await bot.ban_chat_member(
-                chat_id=config.GROUP_CHAT_ID,
+                chat_id=GROUP_CHAT_ID,
                 user_id=user_id
             )
             await bot.send_message(
