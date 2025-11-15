@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from dateutil.relativedelta import relativedelta
 from sqlalchemy import select, and_
 
 from config import SUBSCRIPTION_PRICE, URL, ADMIN_IDS
@@ -199,7 +200,8 @@ async def process_tariff_selection(callback: types.CallbackQuery):
                 currency="RUB",
                 status="pending",
                 payment_status="pending",
-                auto_renew=True  # Включаем автосписание по умолчанию
+                auto_renew=True,  # Включаем автосписание по умолчанию
+                next_payment_date=datetime.utcnow() + relativedelta(months=1)
             )
             session.add(subscription)
             await session.commit()
@@ -209,7 +211,7 @@ async def process_tariff_selection(callback: types.CallbackQuery):
 
             try:
                 # Создаем платеж в ЮKассе
-                payment_url, payment_id = await YooKassaService.create_autopay_subscription(
+                payment_url, payment_id = await YooKassaService.create_subscription(
                     user_id=user.id,
                     plan_data={
                         'plan_type': tariff_type,

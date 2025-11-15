@@ -41,7 +41,7 @@ class YooKassaService:
 
     @staticmethod
     @log_execution(__name__)
-    async def create_autopay_subscription(self, user_id: int, plan_data: dict, email: str = None):
+    async def create_subscription(self, user_id: int, plan_data: dict, email: str = None):
         """Создание подписки с автосписанием"""
         try:
             YooKassaService._ensure_configured()
@@ -68,25 +68,7 @@ class YooKassaService:
                     "plan_type": plan_data['plan_type'],
                     "type": "initial_subscription"
                 }
-            }, str(uuid.uuid4()))
-            async with aiohttp.ClientSession() as session:
-                self.headers['Idempotence-Key'] = payment_id
-                async with session.post(
-                        f"{self.base_url}/payments",
-                        json=payload,
-                        auth=self.auth,
-                        headers=self.headers
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return {
-                            'payment_id': data['id'],
-                            'confirmation_url': data['confirmation']['confirmation_url'],
-                            'status': data['status']
-                        }
-                    else:
-                        error_text = await response.text()
-                        raise Exception(f"YooKassa error: {response.status} - {error_text}")
+            }, payment_id)
 
             logger.info(f"Платеж создан: {payment.id}, статус: {payment.status}")
             return payment.confirmation.confirmation_url, payment.id
@@ -94,6 +76,7 @@ class YooKassaService:
         except Exception as e:
             logger.error(f"Ошибка создания автоподписки для {user_id}: {str(e)}", exc_info=True)
             raise
+
 
     @staticmethod
     @log_execution(__name__)

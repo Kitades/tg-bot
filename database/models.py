@@ -73,6 +73,7 @@ class Subscription(Base):
     end_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    next_payment_date = Column(DateTime, )
 
     payment_id = Column(String(100), unique=True, nullable=True)
     payment_method = Column(String(50), nullable=True)
