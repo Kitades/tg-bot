@@ -266,7 +266,6 @@ def main():
                 status = payment.get("status")
                 if status == "succeeded":
                     # Всё хорошо — переносим next_payment_date
-
                     move_next_payment_date(conn, sub_id, plan_type)
                 else:
                     # ЮKassa ответила, но платёж не прошёл (canceled, pending и т.п.)
