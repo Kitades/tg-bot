@@ -134,7 +134,7 @@ def get_due_subscriptions(conn) -> list[dict]:
         next_payment_date
         FROM subscriptions
         WHERE auto_renew = True
-          AND next_payment_date = CURRENT_DATE
+          AND next_payment_date:: date = CURRENT_DATE
     """
 
     subs: list[dict] = []

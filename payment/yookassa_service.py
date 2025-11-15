@@ -41,7 +41,7 @@ class YooKassaService:
 
     @staticmethod
     @log_execution(__name__)
-    async def create_subscription(self, user_id: int, plan_data: dict, email: str = None):
+    async def create_subscription(user_id: int, plan_data: dict, email: str = None):
         """Создание подписки с автосписанием"""
         try:
             YooKassaService._ensure_configured()
@@ -53,7 +53,7 @@ class YooKassaService:
                     "currency": "RUB"
                 },
                 "payment_method_data": {
-                    "type": "bank_card"
+                    "type": "yoo_money"
                 },
                 "confirmation": {
                     "type": "redirect",
