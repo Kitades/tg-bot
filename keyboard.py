@@ -122,6 +122,37 @@ async def _process_tariff_selection(callback, subscription, payment):
     )
 
 
+async def _show_cancel_confirmation(callback, subscription, days_left):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="✅ Да, отменить автоплатежи",
+                callback_data="confirm_cancel_auto"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="❌ Нет, оставить как есть",
+                callback_data="cancel_cancel_auto"
+            )
+        ]
+    ])
+    await callback.message.answer(
+        f"⚠️ <b>Подтверждение отмены автоплатежей</b>\n\n"
+        f"📋 Тариф: <b>{subscription.plan_name}</b>\n"
+        f"💰 Стоимость: <b>{subscription.price} руб.</b>\n"
+        f"📅 Подписка действует до: <b>{subscription.end_date.strftime('%d.%m.%Y')}</b>\n"
+        f"⏳ Осталось дней: <b>{days_left}</b>\n\n"
+        f"<b>После отмены автоплатежей:</b>\n"
+        f"• Подписка не будет продлена автоматически\n"
+        f"• Текущий доступ сохранится до {subscription.end_date.strftime('%d.%m.%Y')}\n"
+        f"• Для продления нужно будет оформить подписку заново\n\n"
+        f"<b>Вы уверены, что хотите отменить автоплатежи?</b>",
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+
+
 async def _check_payment(callback: types.CallbackQuery, subscription: Subscription, group_url: str = None):
     """Обрабатывает успешную оплату"""
     try:
@@ -184,10 +215,11 @@ async def _content_handler_false(callback):
     )
 
 
-async def my_subscription(callback, subscription, days_left):
+async def my_subscription(callback, subscription, days_left, auto_renew_status):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📚 Перейти к контенту", callback_data="content")],
         [InlineKeyboardButton(text="🔄 Продлить подписку", callback_data="buy_subscription")],
+        [InlineKeyboardButton(text="❌ Отменить автоплатежи", callback_data="cancel_auto_subscription")],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
     ])
 
@@ -197,8 +229,9 @@ async def my_subscription(callback, subscription, days_left):
         f"💰 Стоимость: {subscription.price:.2f}₽\n"
         f"📅 Начало: {subscription.start_date.strftime('%d.%m.%Y')}\n"
         f"📅 Окончание: {subscription.end_date.strftime('%d.%m.%Y')}\n"
+        f"🔄 Автоплатеж: <b>{auto_renew_status}</b>\n"
         f"⏳ Осталось дней: {days_left}\n"
-        f"🔄 Статус: ✅ Активна",
+        f"📈 Статус: ✅ Активна",
         parse_mode='HTML',
         reply_markup=keyboard
     )

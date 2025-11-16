@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from datetime import datetime, timedelta
 
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import select, and_
@@ -12,9 +13,8 @@ from database.models import User, Subscription, UserSettings, FreeDailyPost
 from database.session import get_db_session
 from helpers import is_admin, get_admin_ids, notify_admins_about_subscription
 from keyboard import main_keyboard, show_tariff_selection, _process_tariff_selection, _check_payment, _content_handler, \
-    _content_handler_false, back_main, my_subscription, my_subscription_inactive
+    _content_handler_false, back_main, my_subscription, my_subscription_inactive, _show_cancel_confirmation
 import logging
-
 
 from payment.yookassa_service import YooKassaService
 from servises.daily_poster import FreePostService
@@ -161,6 +161,143 @@ async def buy_subscription(callback: types.CallbackQuery):
             logger.error(f"Ошибка покупки подписки: {str(e)}", exc_info=True)
             await callback.message.answer("❌ Произошла ошибка при обработке запроса")
             await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_auto_payments")
+async def cancel_auto_payments(callback):
+    user_id = callback.from_user.id
+    logger.info(f"Пользователь {user_id} начал отмену подписки")
+    async with get_db_session() as session:
+        try:
+            user_result = await session.execute(
+                select(User).where(User.telegram_id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            if not user:
+                logger.warning(f"Пользователь {user_id} не найден в БД")
+                await callback.answer("❌ Сначала используйте /start")
+                return
+
+            await show_cancel_confirmation(callback.message, user_id)
+            await callback.answer()
+        except Exception as e:
+            logger.error(f"Ошибка отмены подписки: {str(e)}", exc_info=True)
+            await callback.message.answer("❌ Произошла ошибка при обработке запроса")
+            await callback.answer()
+
+
+async def show_cancel_confirmation(callback: types.CallbackQuery, user_id: int):
+    async with get_db_session() as session:
+        try:
+            # Получаем пользователя
+            user_result = await session.execute(
+                select(User).where(User.telegram_id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            if not user:
+                await callback.answer("❌ Сначала используйте /start")
+                return
+
+            subscription_result = await session.execute(
+                select(Subscription).where(
+                    Subscription.user_id == user.id,
+                    Subscription.status == 'active',
+                    Subscription.end_date > datetime.utcnow()
+                ).order_by(Subscription.created_at.desc())
+            )
+            subscription = subscription_result.scalar_one_or_none()
+            if not subscription:
+                await callback.message.answer(
+                    "❌ У вас нет активной подписки.\n\n"
+                    "Если у вас есть вопросы, обратитесь в поддержку."
+                )
+                return
+            if not subscription.auto_renew:
+                await callback.message.answer(
+                    "ℹ️ Автоплатежи уже отключены для вашей подписки.\n\n"
+                    f"📅 Подписка действует до: {subscription.end_date.strftime('%d.%m.%Y')}\n"
+                    "После этой даты доступ будет закрыт."
+                )
+                return
+
+            days_left = (subscription.end_date - datetime.utcnow()).days
+
+            await _show_cancel_confirmation(callback, subscription, days_left)
+
+        except Exception as e:
+            logger.error(f"Ошибка при показе подтверждения отмены: {str(e)}", exc_info=True)
+            await callback.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+
+@router.callback_query(F.data == "confirm_cancel_auto")
+async def confirm_cancel_auto_subscription(callback: CallbackQuery):
+    """Подтверждение отмены авто-подписки"""
+    user_id = callback.from_user.id
+    logger.info(f"Пользователь {user_id} подтвердил отмену авто-подписки")
+
+    async with get_db_session() as session:
+        try:
+
+            user_result = await session.execute(
+                select(User).where(User.telegram_id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            if not user:
+                await callback.message.answer("❌ Пользователь не найден")
+                await callback.answer()
+                return
+
+            success = await YooKassaService.cancel_auto_payments(user.id)
+
+            if success:
+                # Получаем обновленную информацию о подписке
+                subscription_result = await session.execute(
+                    select(Subscription).where(
+                        Subscription.user_id == user.id,
+                        Subscription.status == 'active'
+                    ).order_by(Subscription.created_at.desc())
+                )
+                subscription = subscription_result.scalar_one_or_none()
+
+                if subscription:
+                    message_text = (
+                        f"✅ <b>Автоплатежи отменены!</b>\n\n"
+                        f"📋 Тариф: <b>{subscription.plan_name}</b>\n"
+                        f"📅 Подписка действует до: <b>{subscription.end_date.strftime('%d.%m.%Y')}</b>\n"
+                        f"🔄 Автоплатеж: <b>❌ Отключен</b>\n\n"
+                        f"<i>После {subscription.end_date.strftime('%d.%m.%Y')} доступ к материалам будет закрыт.</i>\n"
+                        f"Для продления оформите подписку заново."
+                    )
+                else:
+                    message_text = "✅ Автоплатежи отменены!"
+
+                await callback.message.edit_text(
+                    message_text,
+                    parse_mode="HTML"
+                )
+
+                logger.info(f"Автоплатежи успешно отменены для пользователя {user_id}")
+
+            else:
+                await callback.message.edit_text(
+                    "❌ <b>Не удалось отменить автоплатежи</b>\n\n"
+                    "Пожалуйста, попробуйте позже или обратитесь в поддержку.",
+                    parse_mode="HTML"
+                )
+                logger.error(f"Ошибка отмены автоплатежей для пользователя {user_id}")
+
+        except Exception as e:
+            logger.error(f"Ошибка при отмене авто-подписки: {str(e)}", exc_info=True)
+            await callback.message.edit_text(
+                "❌ <b>Произошла ошибка при отмене автоплатежей</b>\n\n"
+                "Пожалуйста, попробуйте позже или обратитесь в поддержку.",
+                parse_mode="HTML"
+            )
+
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("tariff_"))
@@ -340,53 +477,77 @@ async def check_payment(callback: types.CallbackQuery):
             await callback.answer()
 
 
-@router.callback_query(F.data == "my_subscription")
-async def my_subscription_handler(callback: types.CallbackQuery):
-    """Обработчик кнопки 'Моя подписка'"""
+@router.callback_query(F.data.startswith("check_payment_"))
+async def check_payment(callback: types.CallbackQuery):
+    """Проверка оплаты, но теперь без обращения к YooKassa API — только статус в БД"""
+
+    subscription_id = int(callback.data.replace("check_payment_", ""))
     user_id = callback.from_user.id
+    logger.info(f"Проверка оплаты для подписки {subscription_id} пользователем {user_id}")
 
     async with get_db_session() as session:
         try:
-
+            # Получаем пользователя
             user_result = await session.execute(
                 select(User).where(User.telegram_id == user_id)
             )
             user = user_result.scalar_one_or_none()
 
             if not user:
-                await callback.answer("❌ Пользователь не найден. Используйте /start")
+                await callback.answer("❌ Пользователь не найден")
                 return
 
+            # Получаем подписку
             result = await session.execute(
                 select(Subscription)
+                .where(Subscription.id == subscription_id)
                 .where(Subscription.user_id == user.id)
-                .where(Subscription.status == 'active')
-                .where(Subscription.end_date > datetime.utcnow())
-                .order_by(Subscription.created_at.desc())
             )
             subscription = result.scalar_one_or_none()
-            if subscription:
-                days_left = (subscription.end_date - datetime.utcnow()).days
-                await my_subscription(callback, subscription, days_left)
-            else:
-                inactive_result = await session.execute(
-                    select(Subscription)
-                    .where(Subscription.user_id == user.id)
-                    .order_by(Subscription.created_at.desc())
-                )
-                inactive_sub = inactive_result.scalar_one_or_none()
-                if inactive_sub:
-                    await my_subscription_inactive(callback, inactive_sub)
-                else:
-                    await callback.message.answer("❌ У вас нет активных подписок")
 
+            if not subscription:
+                await callback.message.answer("❌ Подписка не найдена")
+                await callback.answer()
+                return
+
+            # 💡 Теперь всё решает статус в БД, который выставляет ВЕБХУК
+            if subscription.status == "active":
+                await callback.message.answer("✅ Подписка уже активирована!")
+                await callback.answer()
+                return
+
+            if subscription.status in ["pending", "waiting_payment", None]:
+                await callback.message.answer(
+                    "⌛ Платеж еще не подтверждён.\n"
+                    "Обычно это занимает несколько секунд.\n"
+                    "Если оплата прошла — подождите немного."
+                )
+                await callback.answer()
+                return
+
+            if subscription.status == "canceled":
+                await callback.message.answer(
+                    "❌ Платеж был отменён.\nПопробуйте оформить подписку снова."
+                )
+                await callback.answer()
+                return
+
+            if subscription.status == "failed":
+                await callback.message.answer(
+                    "❌ Ошибка при оплате.\nПлатеж не прошёл."
+                )
+                await callback.answer()
+                return
+
+            await callback.message.answer(
+                f"Статус подписки: {subscription.status}"
+            )
             await callback.answer()
 
         except Exception as e:
-            print(f"❌ Ошибка в my_subscription_handler: {e}")
-            await callback.message.answer("❌ Произошла ошибка при получении информации о подписке")
+            logger.error(f"Ошибка проверки платежа: {str(e)}\", exc_info=True")
+            await callback.message.answer("❌ Произошла ошибка при проверке платежа")
             await callback.answer()
-
 
 @router.callback_query(F.data == "back_to_main")
 async def back_to_main_handler(callback: types.CallbackQuery):

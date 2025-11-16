@@ -31,7 +31,7 @@ WEBAPP_PORT = int(os.getenv("WEBAPP_PORT"))
 URL = os.getenv("URL")
 USERNAME_CHANNEL = os.getenv("USERNAME_CHANNEL")
 ADMIN_IDS = [384110333]
-
+URL_BOT = os.getenv("URL_BOT")
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
