@@ -4,7 +4,7 @@ import hashlib
 from aiohttp import web
 from datetime import datetime, timedelta
 
-from config import YOOKASSA_SECRET_KEY, URL
+from config import YOOKASSA_SECRET_KEY, USERNAME_CHANNEL
 from database.models import Subscription
 from sqlalchemy import select, update
 from decimal import Decimal
@@ -117,10 +117,9 @@ class WebhookHandler:
                     subscription = result.scalar_one_or_none()
 
                     now = datetime.utcnow()
-                    end_date = now + timedelta(days=30)  # Подписка на 30 дней
+                    end_date = now + timedelta(days=30)
                     payment_method_id = payment_data.get('payment_method', {}).get('id')
 
-                    # Определяем название плана по типу
                     plan_name = "Обычный"
                     if plan_type == 'student':
                         plan_name = "Студенческий"
@@ -162,7 +161,6 @@ class WebhookHandler:
                         session.add(subscription)
                         logger.info(f"Создана новая подписка для пользователя {user_id}")
 
-                # Добавляем в группу
                 await self._add_user_to_group(user_id)
 
         except Exception as e:
@@ -183,7 +181,7 @@ class WebhookHandler:
             async with get_db_session() as session:
                 if payment_type == 'auto_payment':
                     logger.info(f"Автоплатеж {payment_id} отменен")
-                    # Можно добавить логику уведомления пользователя
+
                 else:
                     # Отменяем подписку для обычного платежа
                     await session.execute(
@@ -207,7 +205,7 @@ class WebhookHandler:
         try:
             from main import bot
             await bot.unban_chat_member(
-                chat_id=URL,
+                chat_id=USERNAME_CHANNEL,
                 user_id=user_id
             )
             await bot.send_message(
@@ -223,7 +221,7 @@ class WebhookHandler:
         try:
             from main import bot
             await bot.ban_chat_member(
-                chat_id=URL,
+                chat_id=USERNAME_CHANNEL,
                 user_id=user_id
             )
             await bot.send_message(
