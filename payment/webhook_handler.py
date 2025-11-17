@@ -4,7 +4,7 @@ import hashlib
 from aiohttp import web
 from datetime import datetime, timedelta
 
-from config import YOOKASSA_SECRET_KEY
+from config import YOOKASSA_SECRET_KEY, URL
 from database.models import Subscription
 from sqlalchemy import select, update
 from decimal import Decimal
@@ -202,37 +202,37 @@ class WebhookHandler:
         except Exception as e:
             logger.error(f"Ошибка обработки отмененного платежа {payment_id}: {str(e)}", exc_info=True)
 
-    # async def _add_user_to_group(self, user_id: int):
-    #     """Добавление пользователя в группу"""
-    #     try:
-    #         from main import bot
-    #         await bot.unban_chat_member(
-    #             chat_id=URL,
-    #             user_id=user_id
-    #         )
-    #         await bot.send_message(
-    #             chat_id=user_id,
-    #             text="✅ Ваша подписка активирована! Добро пожаловать в закрытую группу!"
-    #         )
-    #         logger.info(f"Пользователь {user_id} добавлен в группу")
-    #     except Exception as e:
-    #         logger.error(f"Ошибка добавления пользователя {user_id} в группу: {str(e)}")
-    #
-    # async def _remove_user_from_group(self, user_id: int):
-    #     """Удаление пользователя из группы"""
-    #     try:
-    #         from main import bot
-    #         await bot.ban_chat_member(
-    #             chat_id=URL,
-    #             user_id=user_id
-    #         )
-    #         await bot.send_message(
-    #             chat_id=user_id,
-    #             text="❌ Ваша подписка была отменена. Доступ к группе закрыт."
-    #         )
-    #         logger.info(f"Пользователь {user_id} удален из группы")
-    #     except Exception as e:
-    #         logger.error(f"Ошибка удаления пользователя {user_id} из группы: {str(e)}")
+    async def _add_user_to_group(self, user_id: int):
+        """Добавление пользователя в группу"""
+        try:
+            from main import bot
+            await bot.unban_chat_member(
+                chat_id=URL,
+                user_id=user_id
+            )
+            await bot.send_message(
+                chat_id=user_id,
+                text="✅ Ваша подписка активирована! Добро пожаловать в закрытую группу!"
+            )
+            logger.info(f"Пользователь {user_id} добавлен в группу")
+        except Exception as e:
+            logger.error(f"Ошибка добавления пользователя {user_id} в группу: {str(e)}")
+
+    async def _remove_user_from_group(self, user_id: int):
+        """Удаление пользователя из группы"""
+        try:
+            from main import bot
+            await bot.ban_chat_member(
+                chat_id=URL,
+                user_id=user_id
+            )
+            await bot.send_message(
+                chat_id=user_id,
+                text="❌ Ваша подписка была отменена. Доступ к группе закрыт."
+            )
+            logger.info(f"Пользователь {user_id} удален из группы")
+        except Exception as e:
+            logger.error(f"Ошибка удаления пользователя {user_id} из группы: {str(e)}")
 
 
 webhook_handler = WebhookHandler()
