@@ -219,7 +219,7 @@ async def my_subscription(callback, subscription, days_left, auto_renew_status):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📚 Перейти к контенту", callback_data="content")],
         [InlineKeyboardButton(text="🔄 Продлить подписку", callback_data="buy_subscription")],
-        [InlineKeyboardButton(text="❌ Отменить автоплатежи", callback_data="cancel_auto_subscription")],
+        [InlineKeyboardButton(text="❌ Отменить автоплатежи", callback_data="_show_cancel_confirmation")],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
     ])
 

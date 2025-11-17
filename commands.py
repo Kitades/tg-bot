@@ -164,32 +164,11 @@ async def buy_subscription(callback: types.CallbackQuery):
             await callback.answer()
 
 
-@router.callback_query(F.data == "cancel_auto_payments")
-async def cancel_auto_payments(callback):
-    user_id = callback.from_user.id
-    logger.info(f"Пользователь {user_id} начал отмену подписки")
-    async with get_db_session() as session:
-        try:
-            user_result = await session.execute(
-                select(User).where(User.telegram_id == user_id)
-            )
-            user = user_result.scalar_one_or_none()
-
-            if not user:
-                logger.warning(f"Пользователь {user_id} не найден в БД")
-                await callback.answer("❌ Сначала используйте /start")
-                return
-
-            await show_cancel_confirmation(callback.message, user_id)
-            await callback.answer()
-        except Exception as e:
-            logger.error(f"Ошибка отмены подписки: {str(e)}", exc_info=True)
-            await callback.message.answer("❌ Произошла ошибка при обработке запроса")
-            await callback.answer()
-
 
 @router.callback_query(F.data == "_show_cancel_confirmation")
-async def show_cancel_confirmation(callback: types.CallbackQuery, user_id: int):
+async def show_cancel_confirmation(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    logger.info(f"Пользователь {user_id} начал отмену подписки")
     async with get_db_session() as session:
         try:
             # Получаем пользователя
@@ -199,6 +178,7 @@ async def show_cancel_confirmation(callback: types.CallbackQuery, user_id: int):
             user = user_result.scalar_one_or_none()
 
             if not user:
+                logger.warning(f"Пользователь {user_id} не найден в БД")
                 await callback.answer("❌ Сначала используйте /start")
                 return
 
