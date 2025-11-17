@@ -486,7 +486,7 @@ async def my_subscription_handler(callback: types.CallbackQuery):
             subscription = result.scalar_one_or_none()
             if subscription:
                 days_left = (subscription.end_date - datetime.utcnow()).days
-                await my_subscription(callback, subscription, days_left)
+                await my_subscription(callback, subscription, days_left, subscription.auto_renew)
             else:
                 inactive_result = await session.execute(
                     select(Subscription)
