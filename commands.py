@@ -387,98 +387,6 @@ async def process_tariff_selection(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("check_payment_"))
 async def check_payment(callback: types.CallbackQuery):
-    """Проверка оплаты"""
-    subscription_id = int(callback.data.replace("check_payment_", ""))
-    user_id = callback.from_user.id
-
-    logger.info(f"Проверка оплаты для подписки {subscription_id} пользователем {user_id}")
-
-    async with get_db_session() as session:
-        try:
-            user_result = await session.execute(
-                select(User).where(User.telegram_id == user_id)
-            )
-            user = user_result.scalar_one_or_none()
-
-            if not user:
-                await callback.answer("❌ Пользователь не найден")
-                return
-
-            result = await session.execute(
-                select(Subscription)
-                .where(Subscription.id == subscription_id)
-                .where(Subscription.user_id == user.id)
-            )
-            subscription = result.scalar_one_or_none()
-
-            if not subscription:
-                await callback.message.answer("❌ Подписка не найдена")
-                await callback.answer()
-                return
-
-            if subscription.status == 'active':
-                await callback.message.answer("✅ Подписка уже активирована!")
-                await callback.answer()
-                return
-
-            if subscription.payment_id:
-                try:
-                    # Проверяем статус платежа через ЮKасcу
-                    payment_info = await YooKassaService.check_payment_status(subscription.payment_id)
-
-                    if payment_info and payment_info['status'] == 'succeeded':
-                        # Активируем подписку
-                        subscription.status = 'active'
-                        subscription.payment_status = 'completed'
-                        subscription.start_date = datetime.utcnow()
-                        subscription.end_date = datetime.utcnow() + timedelta(days=30)
-                        subscription.updated_at = datetime.utcnow()
-
-                        # Сохраняем метод оплаты для автоплатежей
-                        if payment_info.get('payment_method_id'):
-                            subscription.payment_method = payment_info['payment_method_id']
-
-                        await session.commit()
-
-                        # Уведомляем пользователя
-                        await _check_payment(callback, subscription, URL)
-
-                        logger.info(f"Подписка {subscription_id} активирована после проверки платежа")
-
-                        if get_admin_ids():
-                            try:
-                                await notify_admins_about_subscription(
-                                    callback.bot,
-                                    user,
-                                    subscription
-                                )
-                            except Exception as e:
-                                logger.error(f"Ошибка уведомления админу: {str(e)}")
-
-                    else:
-                        status = payment_info['status'] if payment_info else 'unknown'
-                        await callback.message.answer(
-                            f"⌛ Платеж в статусе: {status}\n"
-                            "Попробуйте проверить позже или обратитесь в поддержку."
-                        )
-                        logger.info(f"Платеж для подписки {subscription_id} еще не завершен, статус: {status}")
-
-                except Exception as e:
-                    logger.error(f"Ошибка проверки платежа: {str(e)}", exc_info=True)
-                    await callback.message.answer("❌ Ошибка при проверке платежа. Попробуйте позже.")
-            else:
-                await callback.message.answer("❌ ID платежа не найден")
-
-            await callback.answer()
-
-        except Exception as e:
-            logger.error(f"Ошибка проверки платежа: {str(e)}", exc_info=True)
-            await callback.message.answer("❌ Произошла ошибка при проверке платежа")
-            await callback.answer()
-
-
-@router.callback_query(F.data.startswith("check_payment_"))
-async def check_payment(callback: types.CallbackQuery):
     """Проверка оплаты, но теперь без обращения к YooKassa API — только статус в БД"""
 
     subscription_id = int(callback.data.replace("check_payment_", ""))
@@ -548,6 +456,7 @@ async def check_payment(callback: types.CallbackQuery):
             logger.error(f"Ошибка проверки платежа: {str(e)}\", exc_info=True")
             await callback.message.answer("❌ Произошла ошибка при проверке платежа")
             await callback.answer()
+
 
 @router.callback_query(F.data == "back_to_main")
 async def back_to_main_handler(callback: types.CallbackQuery):
