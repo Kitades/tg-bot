@@ -188,6 +188,7 @@ async def cancel_auto_payments(callback):
             await callback.answer()
 
 
+@router.callback_query(F.data == "_show_cancel_confirmation")
 async def show_cancel_confirmation(callback: types.CallbackQuery, user_id: int):
     async with get_db_session() as session:
         try:
@@ -421,7 +422,7 @@ async def check_payment(callback: types.CallbackQuery):
 
             # 💡 Теперь всё решает статус в БД, который выставляет ВЕБХУК
             if subscription.status == "active":
-                await _check_payment(callback,subscription, USERNAME_CHANNEL)
+                await _check_payment(callback, subscription, USERNAME_CHANNEL)
                 await callback.answer()
                 return
 
