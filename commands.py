@@ -164,7 +164,6 @@ async def buy_subscription(callback: types.CallbackQuery):
             await callback.answer()
 
 
-
 @router.callback_query(F.data == "_show_cancel_confirmation")
 async def show_cancel_confirmation(callback: types.CallbackQuery):
     user_id = callback.from_user.id

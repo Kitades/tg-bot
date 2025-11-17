@@ -133,7 +133,7 @@ async def _show_cancel_confirmation(callback, subscription, days_left):
         [
             InlineKeyboardButton(
                 text="❌ Нет, оставить как есть",
-                callback_data="cancel_cancel_auto"
+                callback_data="back_to_main"
             )
         ]
     ])
