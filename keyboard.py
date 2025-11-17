@@ -2,7 +2,7 @@ from aiogram import types
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from config import SUBSCRIPTION_PRICE, URL
+from config import SUBSCRIPTION_PRICE, URL, USERNAME_CHANNEL
 from database.models import Subscription
 from log import logger
 
@@ -160,7 +160,7 @@ async def _check_payment(callback: types.CallbackQuery, subscription: Subscripti
         if group_url:
             try:
                 await callback.bot.unban_chat_member(
-                    chat_id=URL,
+                    chat_id=USERNAME_CHANNEL,
                     user_id=callback.from_user.id
                 )
             except Exception as e:

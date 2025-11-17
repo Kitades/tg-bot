@@ -8,12 +8,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import select, and_
 
-from config import SUBSCRIPTION_PRICE, URL, ADMIN_IDS
+from config import SUBSCRIPTION_PRICE, URL, ADMIN_IDS, USERNAME_CHANNEL
 from database.models import User, Subscription, UserSettings, FreeDailyPost
 from database.session import get_db_session
-from helpers import is_admin, get_admin_ids, notify_admins_about_subscription
-from keyboard import main_keyboard, show_tariff_selection, _process_tariff_selection, _check_payment, _content_handler, \
-    _content_handler_false, back_main, my_subscription, my_subscription_inactive, _show_cancel_confirmation
+from helpers import is_admin
+from keyboard import main_keyboard, show_tariff_selection, _process_tariff_selection, _content_handler, \
+    _content_handler_false, back_main, _show_cancel_confirmation, my_subscription, my_subscription_inactive, \
+    _check_payment
 import logging
 
 from payment.yookassa_service import YooKassaService
@@ -385,7 +386,7 @@ async def process_tariff_selection(callback: types.CallbackQuery):
             await callback.answer()
 
 
-@router.callback_query(F.data.startswith("check_payment_"))
+@router.callback_query(F.data.startswith("_check_payment"))
 async def check_payment(callback: types.CallbackQuery):
     """Проверка оплаты, но теперь без обращения к YooKassa API — только статус в БД"""
 
@@ -420,7 +421,7 @@ async def check_payment(callback: types.CallbackQuery):
 
             # 💡 Теперь всё решает статус в БД, который выставляет ВЕБХУК
             if subscription.status == "active":
-                await callback.message.answer("✅ Подписка уже активирована!")
+                await _check_payment(callback,subscription, USERNAME_CHANNEL)
                 await callback.answer()
                 return
 
@@ -455,6 +456,54 @@ async def check_payment(callback: types.CallbackQuery):
         except Exception as e:
             logger.error(f"Ошибка проверки платежа: {str(e)}\", exc_info=True")
             await callback.message.answer("❌ Произошла ошибка при проверке платежа")
+            await callback.answer()
+
+
+@router.callback_query(F.data == "my_subscription")
+async def my_subscription_handler(callback: types.CallbackQuery):
+    """Обработчик кнопки 'Моя подписка'"""
+    user_id = callback.from_user.id
+
+    async with get_db_session() as session:
+        try:
+
+            user_result = await session.execute(
+                select(User).where(User.telegram_id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            if not user:
+                await callback.answer("❌ Пользователь не найден. Используйте /start")
+                return
+
+            result = await session.execute(
+                select(Subscription)
+                .where(Subscription.user_id == user.id)
+                .where(Subscription.status == 'active')
+                .where(Subscription.end_date > datetime.utcnow())
+                .order_by(Subscription.created_at.desc())
+            )
+            subscription = result.scalar_one_or_none()
+            if subscription:
+                days_left = (subscription.end_date - datetime.utcnow()).days
+                await my_subscription(callback, subscription, days_left)
+            else:
+                inactive_result = await session.execute(
+                    select(Subscription)
+                    .where(Subscription.user_id == user.id)
+                    .order_by(Subscription.created_at.desc())
+                )
+                inactive_sub = inactive_result.scalar_one_or_none()
+                if inactive_sub:
+                    await my_subscription_inactive(callback, inactive_sub)
+                else:
+                    await callback.message.answer("❌ У вас нет активных подписок")
+
+            await callback.answer()
+
+        except Exception as e:
+            print(f"❌ Ошибка в my_subscription_handler: {e}")
+            await callback.message.answer("❌ Произошла ошибка при получении информации о подписке")
             await callback.answer()
 
 
