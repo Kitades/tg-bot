@@ -1,43 +1,44 @@
 import json
 import hmac
 import hashlib
+from decimal import Decimal
+from datetime import datetime
+
 from aiohttp import web
-from datetime import datetime, timedelta
 
 from config import YOOKASSA_SECRET_KEY, USERNAME_CHANNEL
-from database.models import Subscription
-from sqlalchemy import select, update
-from decimal import Decimal
-
 from log.logger import get_logger
 
+from database.webhook_repository import WebhookRepository
 from database.session import get_db_session
+from database.models import Subscription
 
 logger = get_logger(__name__)
 
 
 class WebhookHandler:
-
     def __init__(self):
         self.secret_key = YOOKASSA_SECRET_KEY
+        self.repo = WebhookRepository()
 
     def verify_webhook(self, body: bytes, signature: str) -> bool:
-        digest = hmac.new(
-            self.secret_key.encode(),
-            body,
-            hashlib.sha256
-        ).hexdigest()
+        """
+        Проверяем подпись, ожидаем заголовок X-Webhook-Signature.
+        """
+        if not signature:
+            logger.warning("Нет подписи X-Webhook-Signature")
+            return False
 
+        digest = hmac.new(self.secret_key.encode(), body, hashlib.sha256).hexdigest()
         is_valid = hmac.compare_digest(digest, signature)
         if not is_valid:
-            logger.warning(f"Неверная подпись вебхука")
-
+            logger.warning("Неверная подпись вебхука")
         return is_valid
 
-    async def handle_webhook(self, request):
+    async def handle_webhook(self, request: web.Request):
         try:
             body = await request.read()
-            signature = request.headers.get('X-Webhook-Signature', '')
+            signature = request.headers.get("X-Webhook-Signature", "")
 
             logger.debug(f"Получен вебхук, подпись: {signature}")
 
@@ -45,192 +46,124 @@ class WebhookHandler:
                 logger.error("Неверная подпись вебхука")
                 return web.Response(status=403, text="Invalid signature")
 
-            data = json.loads(body.decode())
-            event = data.get('event')
-            payment_data = data.get('object', {})
-            payment_id = payment_data.get('id')
+            payload = json.loads(body.decode("utf-8"))
+            event = payload.get("event")
+            obj = payload.get("object", {}) or {}
+            # Для refunds объект может иметь поле payment_id (оригинальный платёж)
+            payment_id = obj.get("id") or obj.get("payment_id")
 
-            logger.info(f"Вебхук: {event} для платежа {payment_id}")
+            if not payment_id:
+                logger.warning("Webhook без payment id")
+                return web.Response(status=400, text="Missing payment id")
 
-            if event == 'payment.succeeded':
-                await self._handle_payment_succeeded(payment_data)
-            elif event == 'payment.canceled':
-                await self._handle_payment_canceled(payment_data)
-            elif event == 'refund.succeeded':
-                await self._handle_refund_succeeded(payment_data)
+            # Попытка пометить обработанным (атомарно). Если уже есть — прекращаем обработку.
+            marked = await self.repo.try_mark_processed(payment_id, event)
+            if not marked:
+                logger.info(f"Webhook {payment_id} уже обработан — пропускаем")
+                return web.Response(status=200, text="Already processed")
+
+            logger.info(f"Webhook received: event={event}, payment={payment_id}")
+
+            # Роутинг событий
+            if event == "payment.succeeded":
+                await self._handle_payment_succeeded(obj)
+            elif event == "payment.canceled":
+                await self._handle_payment_canceled(obj)
+            elif event == "refund.succeeded":
+                await self._handle_refund_succeeded(obj)
             else:
-                logger.debug(f"Необрабатываемое событие: {event}")
+                logger.info(f"Unhandled event type: {event}")
 
-            return web.Response(text="OK", status=200)
+            return web.Response(status=200, text="OK")
 
         except Exception as e:
-            logger.error(f"Ошибка обработки вебхука: {str(e)}", exc_info=True)
+            logger.exception(f"Ошибка обработки вебхука: {e}")
             return web.Response(status=500, text="Internal error")
 
-    async def handle_webhook_test(self, request):
-        return web.Response(text="OK", status=200)
-
+    # ----------------------------
     async def _handle_payment_succeeded(self, payment_data: dict):
-        """Обработка успешного платежа"""
-        payment_id = payment_data.get('id')
-        user_id = payment_data.get('metadata', {}).get('user_id')
-        payment_type = payment_data.get('metadata', {}).get('type')
-        plan_type = payment_data.get('metadata', {}).get('plan_type')
-        amount = Decimal(payment_data.get('amount', {}).get('value', 0))
-
-        logger.info(f"Успешный платеж {payment_id} для пользователя {user_id}, тип: {payment_type}")
+        payment_id = payment_data.get("id")
+        metadata = payment_data.get("metadata", {}) or {}
+        user_id = metadata.get("user_id")
+        payment_type = metadata.get("type")  # "initial_subscription" или "auto_payment"
+        plan_type = metadata.get("plan_type")
+        amount = Decimal((payment_data.get("amount") or {}).get("value") or "0")
 
         if not user_id:
-            logger.warning(f"Нет user_id в платеже {payment_id}")
+            logger.warning(f"Payment {payment_id} missing user_id in metadata")
             return
 
-        try:
-            async with get_db_session() as session:
-                if payment_type == 'auto_payment':
-                    # Обработка автоплатежа - продлеваем подписку
-                    subscription_id = payment_data.get('metadata', {}).get('subscription_id')
-                    if subscription_id:
-                        result = await session.execute(
-                            select(Subscription).where(Subscription.id == subscription_id)
-                        )
-                        subscription = result.scalar_one_or_none()
-
-                        if subscription:
-                            new_end_date = datetime.utcnow() + timedelta(days=30)  # Продлеваем на 30 дней
-                            await session.execute(
-                                update(Subscription).where(
-                                    Subscription.id == subscription_id
-                                ).values(
-                                    end_date=new_end_date,
-                                    updated_at=datetime.utcnow()
-                                )
-                            )
-                            logger.info(f"Подписка {subscription_id} продлена до {new_end_date}")
-
-                    logger.info(f"Автоплатеж {payment_id} успешно обработан")
-
+        # Автоплатёж — продлеваем по subscription_id из metadata
+        if payment_type == "auto_payment":
+            subscription_id = metadata.get("subscription_id")
+            if subscription_id:
+                ok = await self.repo.extend_subscription_by_id(subscription_id, days=30)
+                if ok:
+                    logger.info(f"Subscription {subscription_id} extended by auto_payment (payment={payment_id})")
+                    # Если нужно — можно извлечь user id и уведомить
+                    result = await self.repo.get_subscription_by_id(subscription_id)
+                    if result:
+                        await self._add_user_to_group(result.user_id)
                 else:
-                    # Обычный платеж (первоначальная подписка)
-                    result = await session.execute(
-                        select(Subscription).where(Subscription.payment_id == payment_id)
-                    )
-                    subscription = result.scalar_one_or_none()
+                    logger.warning(f"auto_payment: subscription {subscription_id} not found (payment={payment_id})")
+            else:
+                logger.warning(f"auto_payment without subscription_id (payment={payment_id})")
+            return
 
-                    now = datetime.utcnow()
-                    end_date = now + timedelta(days=30)
-                    payment_method_id = payment_data.get('payment_method', {}).get('id')
-
-                    plan_name = "Обычный"
-                    if plan_type == 'student':
-                        plan_name = "Студенческий"
-
-                    if subscription:
-                        # Обновляем существующую подписку
-                        await session.execute(
-                            update(Subscription).where(
-                                Subscription.payment_id == payment_id
-                            ).values(
-                                status='active',
-                                payment_status='completed',
-                                payment_method=payment_method_id,
-                                start_date=now,
-                                end_date=end_date,
-                                auto_renew=True,
-                                metadata_json=json.dumps(payment_data),
-                                updated_at=now
-                            )
-                        )
-                        logger.info(f"Подписка обновлена для пользователя {user_id}")
-                    else:
-                        # Создаем новую подписку
-                        subscription = Subscription(
-                            user_id=user_id,
-                            plan_type=plan_type or 'regular',
-                            plan_name=plan_name,
-                            price=amount,
-                            currency='RUB',
-                            status='active',
-                            payment_status='completed',
-                            payment_id=payment_id,
-                            payment_method=payment_method_id,
-                            auto_renew=True,
-                            metadata_json=json.dumps(payment_data),
-                            start_date=now,
-                            end_date=end_date
-                        )
-                        session.add(subscription)
-                        logger.info(f"Создана новая подписка для пользователя {user_id}")
-
-                await self._add_user_to_group(user_id)
-
-        except Exception as e:
-            logger.error(f"Ошибка обработки успешного платежа {payment_id}: {str(e)}", exc_info=True)
+        # Инициативный платеж — создаем новую подписку или активируем существующую платежную запись
+        existing = await self.repo.get_subscription_by_payment(payment_id)
+        if existing:
+            await self.repo.activate_subscription(existing, payment_data)
+            logger.info(f"Existing subscription (id={existing.id}) activated for payment {payment_id}")
+            await self._add_user_to_group(existing.user_id)
+        else:
+            sub = await self.repo.create_subscription(user_id, plan_type, payment_id, amount, payment_data)
+            logger.info(f"New subscription created id={sub.id} for user {user_id} (payment={payment_id})")
+            await self._add_user_to_group(user_id)
 
     async def _handle_payment_canceled(self, payment_data: dict):
-        """Обработка отмененного платежа"""
-        payment_id = payment_data.get('id')
-        user_id = payment_data.get('metadata', {}).get('user_id')
-        payment_type = payment_data.get('metadata', {}).get('type')
-
-        logger.warning(f"Платеж отменен: {payment_id}, пользователь: {user_id}, тип: {payment_type}")
-
-        if not user_id:
+        payment_id = payment_data.get("id")
+        if not payment_id:
+            logger.warning("payment.canceled without id")
             return
+        await self.repo.cancel_subscription_by_payment(payment_id)
+        user_id = (payment_data.get("metadata") or {}).get("user_id")
+        if user_id:
+            await self._remove_user_from_group(user_id)
+        logger.info(f"Payment canceled processed for {payment_id}")
 
-        try:
-            async with get_db_session() as session:
-                if payment_type == 'auto_payment':
-                    logger.info(f"Автоплатеж {payment_id} отменен")
+    async def _handle_refund_succeeded(self, payment_data: dict):
+        # refund object may include 'payment_id' referencing original payment
+        original_payment = payment_data.get("payment_id") or (payment_data.get("object") or {}).get("payment_id")
+        if not original_payment:
+            logger.warning("refund.succeeded without payment_id")
+            return
+        await self.repo.refund_subscription_by_payment(original_payment)
+        subscription = await self.repo.get_subscription_by_payment(original_payment)
+        if subscription:
+            await self._remove_user_from_group(subscription.user_id)
+        logger.info(f"Refund processed for original payment {original_payment}")
 
-                else:
-                    # Отменяем подписку для обычного платежа
-                    await session.execute(
-                        update(Subscription).where(
-                            Subscription.payment_id == payment_id
-                        ).values(
-                            status='canceled',
-                            payment_status='failed',
-                            auto_renew=False,
-                            updated_at=datetime.utcnow()
-                        )
-                    )
-                    await self._remove_user_from_group(user_id)
-                    logger.info(f"Подписка пользователя {user_id} отменена")
-
-        except Exception as e:
-            logger.error(f"Ошибка обработки отмененного платежа {payment_id}: {str(e)}", exc_info=True)
-
+    # ----------------------------
     async def _add_user_to_group(self, user_id: int):
-        """Добавление пользователя в группу"""
         try:
+            # lazy import main.bot to avoid circular imports
             from main import bot
-            await bot.unban_chat_member(
-                chat_id=USERNAME_CHANNEL,
-                user_id=user_id
-            )
-            await bot.send_message(
-                chat_id=user_id,
-                text="✅ Ваша подписка активирована! Добро пожаловать в закрытую группу!"
-            )
-            logger.info(f"Пользователь {user_id} добавлен в группу")
+            await bot.unban_chat_member(chat_id=USERNAME_CHANNEL, user_id=user_id)
+            await bot.send_message(chat_id=user_id, text="✅ Ваша подписка активирована! Добро пожаловать в закрытую группу!")
+            logger.info(f"User {user_id} added to group")
         except Exception as e:
-            logger.error(f"Ошибка добавления пользователя {user_id} в группу: {str(e)}")
+            logger.exception(f"Error adding user {user_id} to group: {e}")
 
     async def _remove_user_from_group(self, user_id: int):
-        """Удаление пользователя из группы"""
         try:
             from main import bot
-            await bot.ban_chat_member(
-                chat_id=USERNAME_CHANNEL,
-                user_id=user_id
-            )
-            await bot.send_message(
-                chat_id=user_id,
-                text="❌ Ваша подписка была отменена. Доступ к группе закрыт."
-            )
-            logger.info(f"Пользователь {user_id} удален из группы")
+            await bot.ban_chat_member(chat_id=USERNAME_CHANNEL, user_id=user_id)
+            await bot.send_message(chat_id=user_id, text="❌ Ваша подписка была отменена. Доступ к группе закрыт.")
+            logger.info(f"User {user_id} removed from group")
         except Exception as e:
-            logger.error(f"Ошибка удаления пользователя {user_id} из группы: {str(e)}")
+            logger.exception(f"Error removing user {user_id} from group: {e}")
 
 
+# экспорт экземпляра
 webhook_handler = WebhookHandler()

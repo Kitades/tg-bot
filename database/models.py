@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Numeric, Index, BigInteger
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Numeric, Index, BigInteger, func
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -52,6 +52,15 @@ class FreeDailyPost(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class WebhookEvent(Base):
+    __tablename__ = "webhook_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    payment_id = Column(String(128), unique=True, nullable=False, index=True)
+    event_type = Column(String(64), nullable=True)
+    processed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
@@ -88,4 +97,3 @@ class Subscription(Base):
 
     def __repr__(self):
         return f"<Subscription(id={self.id}, user_id={self.user_id}, status={self.status})>"
-
