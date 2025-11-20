@@ -7,6 +7,5 @@ __pycache__/
 .env
 subscriptions.db
 logs
-docker-compose.yml
-Dockerfile
-cpp
+
+
