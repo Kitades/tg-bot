@@ -366,7 +366,7 @@ async def process_tariff_selection(callback: types.CallbackQuery):
             await callback.answer()
 
 
-@router.callback_query(F.data.startswith("_check_payment"))
+@router.callback_query(F.data.startswith("check_payment_"))
 async def check_payment(callback: types.CallbackQuery):
     """Проверка оплаты, но теперь без обращения к YooKassa API — только статус в БД"""
 

@@ -115,8 +115,7 @@ async def _process_tariff_selection(callback, subscription, payment):
     await callback.message.answer(
         f"✅ Выбран тариф: {subscription.plan_name}\n"
         f"💳 Сумма к оплате: {subscription.price:.2f}₽\n\n"
-        f"🔗 <a href='{payment['confirmation_url']}'>Ссылка для оплаты</a>\n\n"
-        "После оплаты нажмите '✅ Проверить оплату'",
+        f"🔗 <a href='{payment['confirmation_url']}'>Ссылка для оплаты</a>\n\n",
         parse_mode='HTML',
         reply_markup=keyboard
     )

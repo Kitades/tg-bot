@@ -9,3 +9,4 @@ subscriptions.db
 logs
 docker-compose.yml
 Dockerfile
+cpp
