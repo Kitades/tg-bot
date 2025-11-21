@@ -39,20 +39,6 @@ services:
       - backend
     restart: always
 
-  certbot:
-    image: certbot/certbot
-    container_name: certbot
-    volumes:
-      - /etc/letsencrypt:/etc/letsencrypt
-      - ./nginx:/etc/nginx/ssl
-    entrypoint: >
-      sh -c "certbot certonly --standalone
-      --preferred-challenges http
-      -d potyaevprobot.ru -d www.potyaevprobot.ru
-      --email maks.severgin80@gmail.com
-      --agree-tos
-      --non-interactive"
-
 volumes:
   pgdata:
 
