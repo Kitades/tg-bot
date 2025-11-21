@@ -5,7 +5,7 @@ from datetime import datetime
 from aiogram.client.session import aiohttp
 from yookassa import Payment, Configuration
 from sqlalchemy import select, update
-from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, YOOKASSA_WEBHOOK_URL, URL, URL_BOT
+from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, YOOKASSA_WEBHOOK_URL, URL, URL_BOT, RETURN_URL
 from log.logger import get_logger, log_execution
 
 from database.models import Subscription
@@ -57,7 +57,7 @@ class YooKassaService:
                 },
                 "confirmation": {
                     "type": "redirect",
-                    "return_url": f"{URL_BOT}"
+                    "return_url": f"{RETURN_URL}"
                 },
                 "capture": True,
                 "save_payment_method": True,  # Сохраняем метод оплаты для автоплатежей
