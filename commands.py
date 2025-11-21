@@ -15,7 +15,7 @@ from database.session import get_db_session
 from helpers import is_admin
 from keyboard import main_keyboard, show_tariff_selection, _process_tariff_selection, _content_handler, \
     _content_handler_false, back_main, _show_cancel_confirmation, my_subscription, my_subscription_inactive, \
-    _check_payment
+    _check_payment, show_tariff_selection_callback
 import logging
 
 from payment.yookassa_service import YooKassaService
@@ -174,7 +174,7 @@ async def buy_subscription(callback: types.CallbackQuery):
                 await state.update_data(user_id=user.id)
 
             else:
-                await show_tariff_selection(callback)
+                await show_tariff_selection_callback(callback)
 
             await callback.answer()
             logger.info(f"Показан выбор тарифов для пользователя {user_id}")
