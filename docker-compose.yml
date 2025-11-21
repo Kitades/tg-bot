@@ -4,10 +4,7 @@ services:
   db:
     image: postgres:16
     container_name: bot_postgres
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    env_file: .env
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -15,33 +12,46 @@ services:
     restart: always
 
   app:
-    build: .
+    build: ./app
     container_name: bot_app
     env_file: .env
     depends_on:
       - db
-    expose:
-      - "8080:8080"
-    volumes:
-      - .:/app
+    ports:
+      - "8080:8080"   # бот слушает 8080
     networks:
       - backend
     restart: always
 
   nginx:
-    image: nginx:latest
+    image: nginx:1.24
     container_name: nginx
+    depends_on:
+      - app
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx:/etc/nginx/ssl
+      - /etc/letsencrypt:/etc/letsencrypt
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - ./cppks/default.conf:/etc/nginx/conf.d/default.conf
-      - /etc/letsencrypt:/etc/letsencrypt:ro
     networks:
       - backend
-    depends_on:
-      - app
     restart: always
+
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - ./nginx:/etc/nginx/ssl
+    entrypoint: >
+      sh -c "certbot certonly --standalone
+      --preferred-challenges http
+      -d potyaevprobot.ru -d www.potyaevprobot.ru
+      --email maks.severgin80@gmail.com
+      --agree-tos
+      --non-interactive"
 
 volumes:
   pgdata:
