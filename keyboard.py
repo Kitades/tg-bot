@@ -122,23 +122,12 @@ async def show_tariff_selection(message):
     )
 
 
-async def show_tariff_selection_callback(callback):
-    """Показ тарифов для объекта CallbackQuery"""
-    logger.info(f"Показ тарифов для пользователя {callback.from_user.id}")
+async def show_tariff_selection_by_callback(callback):
+    """Показ тарифов через CallbackQuery объект"""
 
     keyboard = [
-        [
-            InlineKeyboardButton(
-                text="💼 Обычный - 8000 руб/мес",
-                callback_data="tariff_regular"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🎓 Студенческий - 5000 руб/мес",
-                callback_data="tariff_student"
-            )
-        ]
+        [InlineKeyboardButton(text="💼 Обычный - 8000 руб/мес", callback_data="tariff_regular")],
+        [InlineKeyboardButton(text="🎓 Студенческий - 5000 руб/мес", callback_data="tariff_student")]
     ]
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -155,6 +144,7 @@ async def show_tariff_selection_callback(callback):
         reply_markup=markup,
         parse_mode="HTML"
     )
+
 
 async def _process_tariff_selection(callback, subscription, payment):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
