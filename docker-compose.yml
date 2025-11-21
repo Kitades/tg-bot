@@ -27,8 +27,9 @@ services:
     depends_on:
       - app
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/site.conf:ro   # Переименовано → нет конфликта
+      - ./nginx/default.conf:/etc/nginx/conf.d/site.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /dev/null:/etc/nginx/conf.d/default.conf   # <-- фикс конфликтов
     ports:
       - "80:80"
       - "443:443"
