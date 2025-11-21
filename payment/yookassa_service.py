@@ -53,7 +53,7 @@ class YooKassaService:
                     "currency": "RUB"
                 },
                 "payment_method_data": {
-                    "type": "yoo_money"
+                    "type": "bank_card"
                 },
                 "confirmation": {
                     "type": "redirect",
