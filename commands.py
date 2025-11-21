@@ -1,8 +1,8 @@
 from aiogram import Router, types, F
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from datetime import datetime
 
-from aiogram.fsm import state
+
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
