@@ -132,7 +132,7 @@ def is_valid_email(email: str) -> bool:
 
 
 @router.callback_query(F.data == "buy_subscription")
-async def buy_subscription(callback: types.CallbackQuery):
+async def buy_subscription(callback: types.CallbackQuery,  state: FSMContext):
     """Обработка кнопки покупки подписки"""
     user_id = callback.from_user.id
     logger.info(f"Пользователь {user_id} начал покупку подписки")
