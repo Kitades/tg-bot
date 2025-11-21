@@ -1,6 +1,7 @@
 from aiogram import Router, types, F
-from aiogram.filters import Command
-from datetime import datetime, timedelta
+from aiogram.filters import Command, StateFilter, state
+from datetime import datetime
+
 
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
@@ -19,7 +20,7 @@ import logging
 
 from payment.yookassa_service import YooKassaService
 from servises.daily_poster import FreePostService
-from states.subscription_states import FreePostCreation
+from states.subscription_states import FreePostCreation, SubscriptionStates
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -123,6 +124,13 @@ async def get_subscription_info(user_id: int) -> dict:
         return {}
 
 
+def is_valid_email(email: str) -> bool:
+    """Простая валидация email"""
+    import re
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+
 @router.callback_query(F.data == "buy_subscription")
 async def buy_subscription(callback: types.CallbackQuery):
     """Обработка кнопки покупки подписки"""
@@ -154,7 +162,20 @@ async def buy_subscription(callback: types.CallbackQuery):
                 await callback.answer()
                 return
 
-            await show_tariff_selection(callback)
+            if not user.email:
+                # Если email нет - запрашиваем его
+                await callback.message.answer(
+                    "📧 <b>Для оформления подписки нужен ваш email</b>\n\n"
+                    "Он потребуется для отправки чека об оплате.\n"
+                    "Пожалуйста, введите ваш email:",
+                    parse_mode="HTML"
+                )
+                await state.set_state(SubscriptionStates.waiting_email)
+                await state.update_data(user_id=user.id)
+
+            else:
+                await show_tariff_selection(callback)
+
             await callback.answer()
             logger.info(f"Показан выбор тарифов для пользователя {user_id}")
 
@@ -163,6 +184,56 @@ async def buy_subscription(callback: types.CallbackQuery):
             await callback.message.answer("❌ Произошла ошибка при обработке запроса")
             await callback.answer()
 
+
+@router.message(SubscriptionStates.waiting_email)
+async def process_user_email(message, state: FSMContext):
+    """Обработка введенного email пользователя"""
+    user_id = message.from_user.id
+    email = message.text.strip()
+
+    # Базовая валидация email
+    if not is_valid_email(email):
+        await message.answer(
+            "❌ <b>Неверный формат email</b>\n\n"
+            "Пожалуйста, введите корректный email адрес:\n"
+            "<i>Пример: example@gmail.com</i>",
+            parse_mode="HTML"
+        )
+        return
+
+    try:
+        # Сохраняем email в базу данных
+        async with get_db_session() as session:
+            user_result = await session.execute(
+                select(User).where(User.telegram_id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            if user:
+                user.email = email
+                await session.commit()
+                logger.info(f"Email сохранен для пользователя {user_id}: {email}")
+
+            # Показываем выбор тарифа
+            await show_tariff_selection(message)
+            await state.clear()
+
+    except Exception as e:
+        logger.error(f"Ошибка сохранения email: {e}")
+        await message.answer("❌ Произошла ошибка при сохранении email. Попробуйте позже.")
+        await state.clear()
+
+
+@router.callback_query(F.data == "change_email")
+async def change_email(callback: CallbackQuery, state: FSMContext):
+    """Изменение email пользователя"""
+    await callback.message.answer(
+        "📧 <b>Введите новый email:</b>\n\n"
+        "Он будет использоваться для отправки чеков об оплате.",
+        parse_mode="HTML"
+    )
+    await state.set_state(SubscriptionStates.waiting_email)
+    await callback.answer()
 
 @router.callback_query(F.data == "_show_cancel_confirmation")
 async def show_cancel_confirmation(callback: types.CallbackQuery):
@@ -305,6 +376,15 @@ async def process_tariff_selection(callback: types.CallbackQuery):
                 await callback.answer("❌ Пользователь не найден")
                 return
 
+            if not user.email:
+                await callback.message.answer(
+                    "❌ <b>Email не указан</b>\n\n"
+                    "Пожалуйста, сначала укажите ваш email для получения чека.",
+                    parse_mode="HTML"
+                )
+                await callback.answer()
+                return
+
             # Определяем название плана
             plan_name = "Обычный" if tariff_type == "regular" else "Студенческий"
             price = PRICES[tariff_type]
@@ -336,7 +416,7 @@ async def process_tariff_selection(callback: types.CallbackQuery):
                         'plan_name': plan_name,
                         'price': float(price)
                     },
-                    # email=user.email  # Если есть email пользователя
+                    email=user.email
                 )
 
                 # Обновляем подписку с payment_id

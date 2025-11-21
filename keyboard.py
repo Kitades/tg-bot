@@ -1,10 +1,14 @@
 from aiogram import types
+from aiogram.filters import state
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy import select
 
 from config import SUBSCRIPTION_PRICE, URL, USERNAME_CHANNEL
-from database.models import Subscription
+from database.models import Subscription, User
+from database.session import get_db_session
 from log import logger
+
 
 welcome_text = (
     "👋 Приветсвуем вас в чате вступления в канал Потяева Владимира о стоматологии.\n"
@@ -19,14 +23,23 @@ welcome_text = (
 
 
 async def main_keyboard(message, sub_info, has_active_sub: bool = False):
+    async with get_db_session() as session:
+        user_result = await session.execute(
+            select(User).where(User.telegram_id == message.from_user.id)
+        )
+        user = user_result.scalar_one_or_none()
+
+    user_email = user.email if user else "не указан"
     """Создает главную клавиатуру"""
     if has_active_sub:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Моя подписка", callback_data="my_subscription")],
+            [InlineKeyboardButton(text="✏️ Изменить email", callback_data="change_email")],
             [InlineKeyboardButton(text=" Помощь", callback_data="help")]
         ])
         await message.answer(
             f"{welcome_text}"
+            f"📧 Ваш email: <b>{user_email}</b>\n\n"
             f"💰 Участие в информационном канале по стоматологии - {SUBSCRIPTION_PRICE[1]} руб в месяц\n"
             f"🎓 Для студентов и ординаторов - {SUBSCRIPTION_PRICE[0]} руб в месяц"
             f"\n\n🎉 <b>У вас активная подписка до {sub_info['end_date']}</b>",
@@ -36,10 +49,12 @@ async def main_keyboard(message, sub_info, has_active_sub: bool = False):
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Купить подписку", callback_data="buy_subscription")],
+            [InlineKeyboardButton(text="✏️ Изменить email", callback_data="change_email")],
             [InlineKeyboardButton(text=" Помощь", callback_data="help")]
         ])
         await message.answer(
             f"{welcome_text}"
+            f"📧 Ваш email: <b>{user_email}</b>\n\n"
             f"💰 Участие в информационном канале по стоматологии - {SUBSCRIPTION_PRICE[1]} руб в месяц\n"
             f"🎓 Для студентов и ординаторов - {SUBSCRIPTION_PRICE[0]} руб в месяц"
             "\n\n📋 Используйте кнопку '💳 Купить подписку' для доступа к контенту",
@@ -52,6 +67,7 @@ async def back_main(callback, has_active_sub):
     if has_active_sub:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Моя подписка", callback_data="my_subscription")],
+            [InlineKeyboardButton(text="✏️ Изменить email", callback_data="change_email")],
             [InlineKeyboardButton(text=" Помощь", callback_data="help")]
         ])
         await callback.message.answer(
@@ -62,6 +78,7 @@ async def back_main(callback, has_active_sub):
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Купить подписку", callback_data="buy_subscription")],
+            [InlineKeyboardButton(text="✏️ Изменить email", callback_data="change_email")],
             [InlineKeyboardButton(text=" Помощь", callback_data="help")]
         ])
         await callback.message.answer(
@@ -71,7 +88,7 @@ async def back_main(callback, has_active_sub):
         )
 
 
-async def show_tariff_selection(callback: types.CallbackQuery):
+async def show_tariff_selection(message):
     """Показывает выбор тарифов"""
     keyboard = [
         [
@@ -89,14 +106,15 @@ async def show_tariff_selection(callback: types.CallbackQuery):
     ]
     markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-    await callback.message.answer(
+    await message.answer(
         " Выберите тарифный план:\n\n"
         f"💼 <b>Обычный</b> - {SUBSCRIPTION_PRICE[1]} руб/мес\n"
         "• Полный доступ ко всем материалам\n"
         "• Автоматическое продление\n\n"
         f"🎓 <b>Студенческий</b> - {SUBSCRIPTION_PRICE[0]} руб/мес\n"
         "• Полный доступ ко всем материалам  \n"
-        "• Специальная цена для студентов\n"
+        "• Специальная цена для студентов\n\n"
+        "• Введите EMAIL для отправки чека\n\n"
         "• Автоматическое продление\n\n"
         "После оплаты доступ откроется автоматически!",
         reply_markup=markup,

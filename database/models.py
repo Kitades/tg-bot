@@ -10,6 +10,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    email = Column(String(100), nullable=True, index=True)
     username = Column(String(100), nullable=True, index=True)
     full_name = Column(String(200), nullable=False)
     language_code = Column(String(10), default='ru')

@@ -57,7 +57,7 @@ def charge_saved_method(
 
     payload = {
         "amount": {
-            "value": amount,   # строка, например "399.00"
+            "value": amount,
             "currency": currency,
         },
         "capture": True,
