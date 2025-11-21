@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:16
-    container_name: bot_postgres
+    container_name: bot
     env_file: .env
     volumes:
       - pgdata:/var/lib/postgresql/data
