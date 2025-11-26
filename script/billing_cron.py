@@ -169,10 +169,11 @@ def get_due_subscriptions(conn) -> list[dict]:
                 {
                     "sub_id": sub_id,
                     "user_id": user_id,
-                    "price": price,  # Decimal
+                    "price": price,
                     "currency": currency,
                     "payment_id": payment_id,
                     "plan_type": plan_type,
+                    "payment_method": payment_method,
                     "next_payment_date": next_payment_date,
                 }
             )
@@ -240,6 +241,7 @@ def main():
                 price = sub["price"]
                 currency = sub["currency"]
                 payment_id = sub["payment_id"]
+                payment_method = sub["payment_method"]
                 plan_type = sub["plan_type"]
 
                 # ЮKassa ожидает строку для amount
@@ -248,7 +250,7 @@ def main():
                 try:
                     payment = charge_saved_method(
                         user_id=user_id,
-                        yk_payment_method_id=payment_id,
+                        yk_payment_method_id=payment_method,
                         amount=amount_str,
                         currency=currency,
                         subscription_id=sub_id,

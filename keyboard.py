@@ -126,17 +126,17 @@ async def show_tariff_selection_by_callback(callback):
     """Показ тарифов через CallbackQuery объект"""
 
     keyboard = [
-        [InlineKeyboardButton(text="💼 Обычный - 8000 руб/мес", callback_data="tariff_regular")],
-        [InlineKeyboardButton(text="🎓 Студенческий - 5000 руб/мес", callback_data="tariff_student")]
+        [InlineKeyboardButton(text=f"💼 Обычный - {SUBSCRIPTION_PRICE[1]} руб/мес", callback_data="tariff_regular")],
+        [InlineKeyboardButton(text=f"🎓 Студенческий - {SUBSCRIPTION_PRICE[0]} руб/мес", callback_data="tariff_student")]
     ]
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     await callback.message.answer(
         "🎯 <b>Выберите тарифный план:</b>\n\n"
-        "💼 <b>Обычный</b> - 8000 руб/мес\n"
+        f"💼 <b>Обычный</b> - {SUBSCRIPTION_PRICE[1]} руб/мес\n"
         "• Полный доступ ко всем материалам\n"
         "• Автоматическое продление\n\n"
-        "🎓 <b>Студенческий</b> - 5000 руб/мес\n"
+        f"🎓 <b>Студенческий</b> - {SUBSCRIPTION_PRICE[0]} руб/мес\n"
         "• Полный доступ ко всем материалам\n"
         "• Специальная цена для студентов\n"
         "• Автоматическое продление\n\n"

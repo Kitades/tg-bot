@@ -46,7 +46,7 @@ class YooKassaService:
         try:
             YooKassaService._ensure_configured()
             logger.info(f"Создание автоподписки для пользователя {user_id}, план: {plan_data['plan_name']}")
-            payment_id = str(uuid.uuid4())
+            idempotence_key = str(uuid.uuid4())
             payment = Payment.create({
                 "amount": {
                     "value": f"{plan_data['price']:.2f}",
@@ -79,11 +79,13 @@ class YooKassaService:
                                 "currency": "RUB"
                             },
                             "quantity": 1,
-                            "vat_code": 1
+                            "vat_code": 1,
+                            "payment_mode": "full_prepayment",
+                            "payment_subject": "service"
                         }
                     ]
                 }
-            }, payment_id)
+            }, idempotence_key)
 
             logger.info(f"Платеж создан: {payment.id}, статус: {payment.status}")
             return payment.confirmation.confirmation_url, payment.id
@@ -129,12 +131,14 @@ class YooKassaService:
                     # Сохраняем payment_method_id и активируем подписку
                     next_payment_date = now + timedelta(days=30)
                     await session.execute(
-                        update(Subscription).where(Subscription.id == subscription.id).values(
+                        update(Subscription)
+                        .where(Subscription.id == subscription.id)
+                        .values(
                             payment_method=payment_method_id,
                             status="active",
                             payment_status="completed",
-                            start_date=now,
-                            end_date=now + timedelta(days=30),
+                            start_date=now if subscription.start_date is None else subscription.start_date,
+                            end_date=next_payment_date,
                             next_payment_date=next_payment_date,
                             metadata_json=str(payment_data),
                             updated_at=now,
@@ -147,7 +151,7 @@ class YooKassaService:
                     sub = Subscription(
                         user_id=user_id,
                         plan_type=metadata.get("plan_type", "regular"),
-                        price=Decimal(payment_data.get("amount", {}).get("value", 0)),
+                        price=subscription.price,
                         plan_name=metadata.get("plan_name", "Обычный"),
                         currency=payment_data.get("amount", {}).get("currency", "RUB"),
                         status="active",
@@ -192,7 +196,7 @@ class YooKassaService:
                 )
                 subscription = result.scalar_one_or_none()
 
-                if not subscription:
+                if not subscription.payment_method:
                     error_msg = f"Нет активной подписки с методом оплаты для пользователя {user_id}"
                     logger.warning(error_msg)
                     raise Exception(error_msg)
@@ -211,6 +215,24 @@ class YooKassaService:
                         "user_id": user_id,
                         "type": "auto_payment",
                         "subscription_id": subscription.id
+                    },
+                    "receipt": {
+                        "customer": {
+                            "email": subscription.user.email
+                        },
+                        "items": [
+                            {
+                                "description": "Подписка",
+                                "amount": {
+                                    "value": f"{float(subscription.price):.2f}",
+                                    "currency": subscription.currency or "RUB"
+                                },
+                                "quantity": 1,
+                                "vat_code": 1,
+                                "payment_mode": "full_prepayment",
+                                "payment_subject": "service"
+                            }
+                        ]
                     }
                 }, str(uuid.uuid4()))
 

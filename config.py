@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SUBSCRIPTION_PRICE = (5000.00, 8000.00, 100.00)
+SUBSCRIPTION_PRICE = (5900.00, 8900.00)
 
 # Конфигурация бота
 BOT_TOKEN = os.getenv("BOT_TOKEN")
