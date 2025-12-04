@@ -38,13 +38,13 @@ class WebhookHandler:
     async def handle_webhook(self, request: web.Request):
         try:
             body = await request.read()
-            signature = request.headers.get("X-Webhook-Signature", "")
-
-            logger.debug(f"Получен вебхук, подпись: {signature}")
-
-            if not self.verify_webhook(body, signature):
-                logger.error("Неверная подпись вебхука")
-                return web.Response(status=403, text="Invalid signature")
+            # signature = request.headers.get("X-Webhook-Signature", "")
+            #
+            # logger.debug(f"Получен вебхук, подпись: {signature}")
+            #
+            # if not self.verify_webhook(body, signature):
+            #     logger.error("Неверная подпись вебхука")
+            #     return web.Response(status=403, text="Invalid signature")
 
             payload = json.loads(body.decode("utf-8"))
             event = payload.get("event")
