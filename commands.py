@@ -214,6 +214,10 @@ async def process_user_email(message, state: FSMContext):
                 await session.commit()
                 logger.info(f"Email сохранен для пользователя {user_id}: {email}")
 
+            if await check_active_subscription(user.id):
+                await message.answer("✅ Email успешно изменен")
+                return
+
             # Показываем выбор тарифа
             await show_tariff_selection(message)
             await state.clear()
