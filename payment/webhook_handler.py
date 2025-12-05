@@ -4,9 +4,10 @@ import hashlib
 from decimal import Decimal
 from datetime import datetime
 
+import aiohttp
 from aiohttp import web
 
-from config import YOOKASSA_SECRET_KEY, USERNAME_CHANNEL
+from config import YOOKASSA_SECRET_KEY, USERNAME_CHANNEL, YOOKASSA_SHOP_ID
 from log.logger import get_logger
 
 from database.webhook_repository import WebhookRepository
@@ -20,6 +21,7 @@ class WebhookHandler:
     def __init__(self):
         self.secret_key = YOOKASSA_SECRET_KEY
         self.repo = WebhookRepository()
+        self.shop_id = YOOKASSA_SHOP_ID
 
     def verify_webhook(self, body: bytes, signature: str) -> bool:
         """
@@ -38,13 +40,6 @@ class WebhookHandler:
     async def handle_webhook(self, request: web.Request):
         try:
             body = await request.read()
-            # signature = request.headers.get("X-Webhook-Signature", "")
-            #
-            # logger.debug(f"Получен вебхук, подпись: {signature}")
-            #
-            # if not self.verify_webhook(body, signature):
-            #     logger.error("Неверная подпись вебхука")
-            #     return web.Response(status=403, text="Invalid signature")
 
             payload = json.loads(body.decode("utf-8"))
             event = payload.get("event")
@@ -55,6 +50,26 @@ class WebhookHandler:
             if not payment_id:
                 logger.warning("Webhook без payment id")
                 return web.Response(status=400, text="Missing payment id")
+
+            url = f"https://api.yookassa.ru/v3/payments/{payment_id}"
+
+            timeout = aiohttp.ClientTimeout(total=10)
+            auth = aiohttp.BasicAuth(login=self.shop_id, password=self.secret_key)
+
+            async with aiohttp.ClientSession(timeout=timeout, auth=auth) as session:
+                async with session.get(url) as resp:
+
+                    if resp.status < 200 or resp.status >= 300:
+                        text = await resp.text()
+                        raise RuntimeError(f"YooKassa API error: {resp.status}, body={text[:500]}")
+                    actual = await resp.json()
+
+            if payment_id != actual.get("id"):
+                return web.Response(status=400, text="Missmatch payment id")
+
+            if obj.get("status") != actual.get("status"):
+                return web.Response(status=409, text="Stale notification status")
+
 
             # Попытка пометить обработанным (атомарно). Если уже есть — прекращаем обработку.
             marked = await self.repo.try_mark_processed(payment_id, event)
@@ -150,7 +165,8 @@ class WebhookHandler:
             # lazy import main.bot to avoid circular imports
             from main import bot
             await bot.unban_chat_member(chat_id=USERNAME_CHANNEL, user_id=user_id)
-            await bot.send_message(chat_id=user_id, text="✅ Ваша подписка активирована! Добро пожаловать в закрытую группу!")
+            await bot.send_message(chat_id=user_id,
+                                   text="✅ Ваша подписка активирована! Добро пожаловать в закрытую группу!")
             logger.info(f"User {user_id} added to group")
         except Exception as e:
             logger.exception(f"Error adding user {user_id} to group: {e}")
