@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SUBSCRIPTION_PRICE = (2.00, 8900.00)
+ADMIN_IDS = [91211500, 384110333]
+# ADMIN_IDS = [384110333]
 
 # Конфигурация бота
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -24,15 +26,14 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 WEBAPP_HOST = os.getenv("WEBAPP_HOST")
 WEBAPP_PORT = int(os.getenv("WEBAPP_PORT"))
 
-# URL = "https://t.me/+P8gqDEd-zENlZTYy"
-# USERNAME_CHANNEL = '-1002908820618'
-# ADMIN_IDS = [91211500, 384110333]
-ADMIN_IDS = [384110333]
-RETURN_URL = os.getenv("RETURN_URL")
 URL = os.getenv("URL")
 USERNAME_CHANNEL = os.getenv("USERNAME_CHANNEL")
-
+RETURN_URL = os.getenv("RETURN_URL")
 URL_BOT = os.getenv("URL_BOT")
+
+# URL = "https://t.me/+P8gqDEd-zENlZTYy"
+# USERNAME_CHANNEL = '-1002908820618'
+
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)

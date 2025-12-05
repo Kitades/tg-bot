@@ -70,7 +70,6 @@ class WebhookHandler:
             if obj.get("status") != actual.get("status"):
                 return web.Response(status=409, text="Stale notification status")
 
-
             # Попытка пометить обработанным (атомарно). Если уже есть — прекращаем обработку.
             marked = await self.repo.try_mark_processed(payment_id, event)
             if not marked:

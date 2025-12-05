@@ -239,6 +239,7 @@ async def change_email(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SubscriptionStates.waiting_email)
     await callback.answer()
 
+
 @router.callback_query(F.data == "_show_cancel_confirmation")
 async def show_cancel_confirmation(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -485,7 +486,7 @@ async def check_payment(callback: types.CallbackQuery):
 
             # 💡 Теперь всё решает статус в БД, который выставляет ВЕБХУК
             if subscription.status == "active":
-                await _check_payment(callback, subscription, USERNAME_CHANNEL)
+                await _check_payment(callback, subscription, URL)
                 await callback.answer()
                 return
 

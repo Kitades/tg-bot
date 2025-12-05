@@ -57,7 +57,7 @@ class YooKassaService:
                 },
                 "confirmation": {
                     "type": "redirect",
-                    "return_url": f"{RETURN_URL}"
+                    "return_url": f"{URL_BOT}"
                 },
                 "capture": True,
                 "save_payment_method": True,  # Сохраняем метод оплаты для автоплатежей
