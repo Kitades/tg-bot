@@ -25,6 +25,8 @@ services:
     networks:
       - backend
     restart: always
+    volumes:
+      - ./script:/app/script
 
   nginx:
     image: nginx:1.24
