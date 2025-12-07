@@ -45,10 +45,21 @@ class WebhookHandler:
             event = payload.get("event")
             obj = payload.get("object", {}) or {}
             # Для refunds объект может иметь поле payment_id (оригинальный платёж)
-            payment_id = obj.get("id") or obj.get("payment_id")
+            # payment_id = obj.get("id") or obj.get("payment_id")
+
+            if event.statswith("payment."):
+                payment_id = obj.get("id")
+            elif event == "refund.succeeded":
+                payment_id = obj.get("payment_id")
+                logger.info(f"RAW OBJECT: {obj}")
+            else:
+                logger.warning(f"Неизвестный event: {event}")
+                logger.info(f"RAW OBJECT: {obj}")
+                return web.Response(status=400, text="Unknown event")
 
             if not payment_id:
                 logger.warning("Webhook без payment id")
+                logger.info(f"RAW OBJECT: {obj}")
                 return web.Response(status=400, text="Missing payment id")
 
             url = f"https://api.yookassa.ru/v3/payments/{payment_id}"
@@ -74,6 +85,7 @@ class WebhookHandler:
             marked = await self.repo.try_mark_processed(payment_id, event)
             if not marked:
                 logger.info(f"Webhook {payment_id} уже обработан — пропускаем")
+
                 return web.Response(status=200, text="Already processed")
 
             logger.info(f"Webhook received: event={event}, payment={payment_id}")
