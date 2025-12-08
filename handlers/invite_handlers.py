@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 @router.callback_query(F.data == "get_invite_link")
-async def get_invite_command(message: Message):
+async def get_invite_command(callback: CallbackQuery):
     """Получение одноразовой ссылки для пользователя с подпиской"""
-    user_id = message.from_user.id
+    user_id = callback.from_user.id
 
     async with get_db_session() as session:
         # Проверяем активную подписку
@@ -40,9 +40,9 @@ async def get_invite_command(message: Message):
 
         # Проверяем, не в группе ли уже пользователь
         try:
-            member = await message.bot.get_chat_member(USERNAME_CHANNEL, user_id)
+            member = await callback.bot.get_chat_member(USERNAME_CHANNEL, user_id)
             if member.status in ['member', 'administrator', 'creator']:
-                await message.answer(
+                await callback.answer(
                     "✅ Вы уже состоите в закрытой группе!\n\n"
                     "Если у вас нет доступа, обратитесь к администратору."
                 )
@@ -53,13 +53,13 @@ async def get_invite_command(message: Message):
         try:
             # Создаем одноразовую ссылку
             invite_link, invite_hash = await InviteService.create_one_time_invite(
-                bot=message.bot,
+                bot=callback.bot,
                 chat_id=USERNAME_CHANNEL,
                 user_id=user.id,
                 expire_hours=24
             )
 
-            await message.answer(
+            await callback.answer(
                 f"🔗 <b>Ваша одноразовая ссылка для вступления:</b>\n\n"
                 f"<code>{invite_link}</code>\n\n"
                 f"📝 <b>Важно:</b>\n"
@@ -73,4 +73,4 @@ async def get_invite_command(message: Message):
 
         except Exception as e:
             logger.error(f"Ошибка создания ссылки: {e}")
-            await message.answer("❌ Ошибка при создании ссылки. Попробуйте позже.")
+            await callback.answer("❌ Ошибка при создании ссылки. Попробуйте позже.")
