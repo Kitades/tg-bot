@@ -227,7 +227,7 @@ async def _check_payment(callback: types.CallbackQuery, subscription: Subscripti
 
 async def _content_handler(callback, group_url):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        # [InlineKeyboardButton(text="🔗 Получить ссылку в группу", callback_data="get_invite_link")],
+        [InlineKeyboardButton(text="🔗 Получить ссылку в группу", callback_data="get_invite_link")],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
     ])
 

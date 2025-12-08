@@ -46,7 +46,7 @@ class InviteLink(Base):
     __tablename__ = 'invite_links'
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
     chat_id = Column(String, nullable=False)  # ID группы
     invite_link = Column(String, unique=True, nullable=False)
     invite_hash = Column(String)  # Хэш ссылки для отзыва
