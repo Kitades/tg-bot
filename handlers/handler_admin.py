@@ -175,7 +175,7 @@ async def show_active_subscriptions(message: Message):
                 message_text += (
 
                     f"<b>{idx}. Пользователь @{username or 'нет username'}</b>\n"
-                    f"      id: {telegram_id}            "
+                    f"   📋 id: <code>{telegram_id}</code>\n"
                     f"   📋 Тип: <code>{plan_type}</code>\n"
                     f"   📝 Название: <b>{plan_name}</b>\n"
                     f"   📅 Начало: <code>{start_str}</code>\n"
