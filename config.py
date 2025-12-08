@@ -1,5 +1,5 @@
-from aiogram import Bot, Dispatcher
 import os
+from aiogram import Bot, Dispatcher
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -33,7 +33,6 @@ URL_BOT = os.getenv("URL_BOT")
 
 # URL = "https://t.me/+P8gqDEd-zENlZTYy"
 # USERNAME_CHANNEL = '-1002908820618'
-
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)

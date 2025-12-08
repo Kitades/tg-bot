@@ -20,6 +20,7 @@ class User(Base):
 
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
     user_settings = relationship("UserSettings", back_populates="user", cascade="all, delete-orphan")
+    invite_links = relationship("InviteLink", back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index('ix_user_telegram_id', 'telegram_id'),
@@ -40,6 +41,22 @@ class UserSettings(Base):
 
     user = relationship("User", back_populates="user_settings")
 
+
+class InviteLink(Base):
+    __tablename__ = 'invite_links'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    chat_id = Column(String, nullable=False)  # ID группы
+    invite_link = Column(String, unique=True, nullable=False)
+    invite_hash = Column(String)  # Хэш ссылки для отзыва
+    is_used = Column(Boolean, default=False)
+    is_revoked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime)
+    used_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="invite_links")
 
 class FreeDailyPost(Base):
     __tablename__ = 'free_daily_posts'

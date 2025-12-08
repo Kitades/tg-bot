@@ -4,7 +4,7 @@ from aiogram.filters import state
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 
-from config import SUBSCRIPTION_PRICE, URL, USERNAME_CHANNEL
+from config import SUBSCRIPTION_PRICE, USERNAME_CHANNEL
 from database.models import Subscription, User
 from database.session import get_db_session
 from log import logger
@@ -214,20 +214,20 @@ async def _check_payment(callback: types.CallbackQuery, subscription: Subscripti
             f"📅 Доступ до: <b>{subscription.end_date.strftime('%d.%m.%Y')}</b>\n"
             f"🔄 Автоплатеж: <b>{'Включен' if subscription.auto_renew else 'Отключен'}</b>\n\n"
         )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔗 Получить ссылку в группу", callback_data="get_invite_link")]
+        ])
 
-        if group_url:
-            message_text += f"🔗 Ссылка на группу: {group_url}"
-
-        await callback.message.answer(message_text, parse_mode="HTML")
+        await callback.message.answer(message_text, parse_mode="HTML", reply_markup=keyboard)
         logger.info(f"Подписка {subscription.id} активирована для пользователя {callback.from_user.id}")
 
     except Exception as e:
         logger.error(f"Ошибка обработки успешной оплаты: {str(e)}", exc_info=True)
 
 
-async def _content_handler(callback, URL):
+async def _content_handler(callback, group_url):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 Перейти в канал", url=f"{URL}")],
+        # [InlineKeyboardButton(text="🔗 Получить ссылку в группу", callback_data="get_invite_link")],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
     ])
 

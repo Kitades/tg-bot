@@ -1,4 +1,4 @@
-# helpers.py (расширенная версия)
+
 from typing import List, Tuple
 from aiogram import Bot
 
@@ -34,17 +34,3 @@ async def notify_admins(bot: Bot, message: str, parse_mode: str = "HTML",
             fail_count += 1
 
     return success_count, fail_count
-
-
-async def notify_admins_about_subscription(bot: Bot, user, subscription) -> Tuple[int, int]:
-    message = (
-        f"💸 <b>Новая подписка!</b>\n\n"
-        f"👤 <b>Пользователь:</b> {user.full_name}\n"
-        f"📧 <b>Username:</b> @{user.username or 'нет'}\n"
-        f"🆔 <b>ID:</b> {user.telegram_id}\n"
-        f"💳 <b>Тариф:</b> {subscription.plan_name}\n"
-        f"💰 <b>Сумма:</b> {subscription.price:.2f}₽\n"
-        f"📅 <b>Дата:</b> {subscription.created_at.strftime('%d.%m.%Y %H:%M')}"
-    )
-
-    return await notify_admins(bot, message, parse_mode="HTML")

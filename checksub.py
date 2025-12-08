@@ -9,10 +9,11 @@ import asyncio
 from config import ADMIN_IDS, USERNAME_CHANNEL
 from database.models import Subscription, User
 from database.session import AsyncSessionLocal
-from config import bot
+
 from helpers import notify_admins, get_admin_ids
 from log.logger import get_logger
 from log.logging_config import setup_logging
+from config import bot
 from servises.telegram_service import TelegramService
 
 setup_logging()
@@ -87,8 +88,6 @@ async def check_subscriptions():
                         logger.info(f"🔴 Подписка {subscription.id} деактивирована (просрочена)")
                     else:
                         logger.info(f"🔴 У {user.telegram_id} , не удалось удалить подписку")
-
-                    # Получаем пользователя для отправки уведомления
 
                 # Коммитим изменения в базе
                 if expired_subscriptions:
@@ -175,12 +174,12 @@ async def check_expiring_subscriptions():
                             "Не забудьте продлить подписку для непрерывного доступа к контенту.",
                             parse_mode='HTML'
                         )
-                        print(f" Напоминание отправлено пользователю {subscription.user.telegram_id}")
+                        logger.info(f" Напоминание отправлено пользователю {subscription.user.telegram_id}")
                     except Exception as e:
-                        print(f"❌ Ошибка отправки напоминания: {e}")
+                        logger.error(f"❌ Ошибка отправки напоминания: {e}")
 
         except Exception as e:
-            print(f"❌ Ошибка в check_expiring_subscriptions: {e}")
+            logger.error(f"❌ Ошибка в check_expiring_subscriptions: {e}")
 
         await asyncio.sleep(12 * 3600)
 
@@ -190,4 +189,4 @@ async def start_background_tasks():
     asyncio.create_task(check_subscriptions())
     asyncio.create_task(send_daily_report())
     asyncio.create_task(check_expiring_subscriptions())
-    print("✅ Фоновые задачи запущены")
+    logger.info("✅ Фоновые задачи запущены")

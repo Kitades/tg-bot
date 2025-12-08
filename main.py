@@ -1,16 +1,14 @@
 import asyncio
-import base64
-import logging
-import uuid
 
-from aiogram.client.session import aiohttp
-from aiogram.webhook.aiohttp_server import setup_application
+import logging
+
 from aiohttp import web
 from yookassa import Configuration
 
 from checksub import check_subscriptions, send_daily_report
-from commands import router
-from config import dp, bot, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY
+
+from config import bot, dp, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, BOT_TOKEN
+from handlers import commands, handler_admin, group_handlers, invite_handlers
 
 from log.logger import get_logger
 from log.logging_config import setup_logging
@@ -19,6 +17,10 @@ from servises.free_scheduler import FreePostScheduler
 
 setup_logging()
 logger = get_logger(__name__)
+
+
+
+
 try:
     Configuration.account_id = YOOKASSA_SHOP_ID
     Configuration.secret_key = YOOKASSA_SECRET_KEY
@@ -34,7 +36,10 @@ async def main():
 
         logger.info("Запуск бота ...")
 
-        dp.include_router(router)
+        dp.include_router(commands.router)
+        dp.include_router(handler_admin.router)
+        dp.include_router(group_handlers.router)
+        dp.include_router(invite_handlers.router)
         logger.info("Роутеры подключены")
 
         # Создаем web-приложение для вебхуков ЮКассы

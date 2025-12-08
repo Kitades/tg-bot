@@ -7,8 +7,9 @@ from aiogram.filters import Command
 from aiogram import Router
 from sqlalchemy import select, desc
 
-from database.models import User, Subscription
+from database.models import User, Subscription, InviteLink
 from database.session import get_db_session
+
 from helpers import is_admin
 
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +34,7 @@ async def show_all_subscriptions(message: Message):
             # JOIN с таблицей пользователей для получения telegram_id
             query = select(
                 User.telegram_id,
+                User.username,
                 Subscription.plan_type,
                 Subscription.plan_name,
                 Subscription.start_date,
@@ -64,7 +66,7 @@ async def show_all_subscriptions(message: Message):
                 message_text = f"📋 <b>Все подписки (часть {i // subscriptions_per_message + 1})</b>\n\n"
 
                 for idx, sub in enumerate(batch, 1):
-                    telegram_id, plan_type, plan_name, start_date, end_date, status, payment_status, payment_id, created_at, updated_at = sub
+                    telegram_id, username, plan_type, plan_name, start_date, end_date, status, payment_status, payment_id, created_at, updated_at = sub
 
                     # Форматируем даты
                     start_str = start_date.strftime("%d.%m.%Y") if start_date else "Не указана"
@@ -89,7 +91,7 @@ async def show_all_subscriptions(message: Message):
                     }.get(payment_status, '❓')
 
                     message_text += (
-                        f"<b>{i + idx}. Пользователь @{telegram_id or 'нет username'}</b>\n"
+                        f"<b>{i + idx}. Пользователь @{username or 'нет username'}</b>\n"
                         f"   👤 Telegram ID: <code>{telegram_id}</code>\n"
                         f"   📋 Тип: <code>{plan_type}</code>\n"
                         f"   📝 Название: <b>{plan_name}</b>\n"
@@ -187,8 +189,6 @@ async def show_active_subscriptions(message: Message):
     except Exception as e:
         logger.error(f"Ошибка при получении активных подписок: {str(e)}", exc_info=True)
         await message.answer("❌ Произошла ошибка при получении активных подписок.")
-
-
 
 
 @router.message(Command("subscription_stats"))
@@ -290,12 +290,13 @@ async def admin_help(message: Message):
 • /all_subscriptions - Все подписки
 • /active_subscriptions - Только активные подписки
 • /subscription_stats - Статистика по подпискам
-• /find_subscription [telegram_id] - Поиск подписок пользователя
+• /invite_stats - Статистика по ссылкам
 
 📊 <b>Управление:</b>
-• /send_message [user_id] [текст] - Отправить сообщение пользователю
-• /broadcast [текст] - Отправить сообщение всем пользователям
-• /user_stats - Статистика пользователей
+• /free_stats - Статистика бесплатной рассылки
+• /list_free_posts - Показать все активные посты для бесплатной рассылки
+• /delete_free_post - Удалить пост из бесплатной рассылки
+• /add_free_post - Начать создание поста для бесплатной рассылки
 
 💡 <b>Советы:</b>
 • Используйте /admin_help для повторного просмотра команд
@@ -303,3 +304,37 @@ async def admin_help(message: Message):
 """
 
     await message.answer(help_text, parse_mode="HTML")
+
+
+@router.message(Command("invite_stats"))
+async def invite_stats(message: Message):
+    """Статистика по ссылкам"""
+    if not is_admin(message.from_user.id):
+        return
+
+    async with get_db_session() as session:
+        # Общая статистика
+        total_query = select(InviteLink)
+        total_result = await session.execute(total_query)
+        total = len(total_result.fetchall())
+
+        used_query = select(InviteLink).where(InviteLink.is_used == True)
+        used_result = await session.execute(used_query)
+        used = len(used_result.fetchall())
+
+        active_query = select(InviteLink).where(
+            InviteLink.is_used == False,
+            InviteLink.is_revoked == False,
+            InviteLink.expires_at > datetime.utcnow()
+        )
+        active_result = await session.execute(active_query)
+        active = len(active_result.fetchall())
+
+        await message.answer(
+            f"📊 <b>Статистика пригласительных ссылок:</b>\n\n"
+            f"• Всего создано: <b>{total}</b>\n"
+            f"• Использовано: <b>{used}</b>\n"
+            f"• Активных: <b>{active}</b>\n"
+            f"• Неиспользованных (истекших): <b>{total - used - active}</b>",
+            parse_mode="HTML"
+        )

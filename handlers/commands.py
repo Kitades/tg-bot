@@ -12,7 +12,8 @@ from sqlalchemy import select, and_
 from config import SUBSCRIPTION_PRICE, URL, ADMIN_IDS, USERNAME_CHANNEL
 from database.models import User, Subscription, UserSettings, FreeDailyPost
 from database.session import get_db_session
-from helpers import is_admin
+
+from helpers import is_admin, get_admin_ids, notify_admins
 from keyboard import main_keyboard, show_tariff_selection, _process_tariff_selection, _content_handler, \
     _content_handler_false, back_main, _show_cancel_confirmation, my_subscription, my_subscription_inactive, \
     _check_payment, show_tariff_selection_by_callback
@@ -487,6 +488,17 @@ async def check_payment(callback: types.CallbackQuery):
             # 💡 Теперь всё решает статус в БД, который выставляет ВЕБХУК
             if subscription.status == "active":
                 await _check_payment(callback, subscription, URL)
+                if get_admin_ids():
+                    await notify_admins(
+                        callback.bot,
+                        f"💸 Новая подписка!\n"
+                        f"👤 Пользователь: {user.full_name}\n"
+                        f"📧 @{user.username or 'нет'}\n"
+                        f"🆔 ID: {user.telegram_id}\n"
+                        f"💳 Тариф: {subscription.plan_name}\n"
+                        f"💰 Сумма: {subscription.price:.2f}₽",
+                        parse_mode="HTML"
+                    )
                 await callback.answer()
                 return
 
