@@ -47,7 +47,7 @@ class WebhookHandler:
             # Для refunds объект может иметь поле payment_id (оригинальный платёж)
             # payment_id = obj.get("id") or obj.get("payment_id")
 
-            if event.statswith("payment."):
+            if event.startswith("payment."):
                 payment_id = obj.get("id")
             elif event == "refund.succeeded":
                 payment_id = obj.get("payment_id")

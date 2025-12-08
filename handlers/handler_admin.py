@@ -135,6 +135,7 @@ async def show_active_subscriptions(message: Message):
         async with get_db_session() as session:
             query = select(
                 User.telegram_id,
+                User.username,
                 Subscription.plan_type,
                 Subscription.plan_name,
                 Subscription.start_date,
@@ -160,7 +161,7 @@ async def show_active_subscriptions(message: Message):
             message_text = "✅ <b>Активные подписки</b>\n\n"
 
             for idx, sub in enumerate(subscriptions, 1):
-                telegram_id, plan_type, plan_name, start_date, end_date, status, payment_status, payment_id = sub
+                telegram_id, username, plan_type, plan_name, start_date, end_date, status, payment_status, payment_id = sub
 
                 start_str = start_date.strftime("%d.%m.%Y") if start_date else "Не указана"
                 end_str = end_date.strftime("%d.%m.%Y") if end_date else "Не указана"
@@ -172,7 +173,9 @@ async def show_active_subscriptions(message: Message):
                     days_left = str(days_left) if days_left > 0 else "0"
 
                 message_text += (
-                    f"<b>{idx}. Пользователь @{telegram_id or 'нет username'}</b>\n"
+
+                    f"<b>{idx}. Пользователь @{username or 'нет username'}</b>\n"
+                    f"      id: {telegram_id}            "
                     f"   📋 Тип: <code>{plan_type}</code>\n"
                     f"   📝 Название: <b>{plan_name}</b>\n"
                     f"   📅 Начало: <code>{start_str}</code>\n"
