@@ -9,6 +9,9 @@ LOG_DIR.mkdir(exist_ok=True)
 
 def setup_logging():
     """Настройка логирования для всего приложения"""
+    root_logger = logging.getLogger()
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
 
     formatter = logging.Formatter(
         fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -41,7 +44,6 @@ def setup_logging():
     error_handler.setLevel(logging.ERROR)
 
     # Настраиваем корневой логгер
-    root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
