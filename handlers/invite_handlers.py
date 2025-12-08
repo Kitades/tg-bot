@@ -42,7 +42,7 @@ async def get_invite_command(callback: CallbackQuery):
         try:
             member = await callback.bot.get_chat_member(USERNAME_CHANNEL, user_id)
             if member.status in ['member', 'administrator', 'creator']:
-                await callback.answer(
+                await callback.message.answer(
                     "✅ Вы уже состоите в закрытой группе!\n\n"
                     "Если у вас нет доступа, обратитесь к администратору."
                 )
@@ -58,10 +58,14 @@ async def get_invite_command(callback: CallbackQuery):
                 user_id=user.id,
                 expire_hours=24
             )
+            logger.info(f"Invite для {user_id}: {invite_link} (длина {len(invite_link)})")
 
-            await callback.answer(
-                f"🔗 <b>Ваша одноразовая ссылка для вступления:</b>\n\n"
-                f"<code>{invite_link}</code>\n\n"
+            max_len = 4000
+            if len(invite_link) > max_len:
+                invite_link = invite_link[:max_len] + "..."
+
+            await callback.message.answer(f"🔗 Ваша одноразовая ссылка:\n{invite_link}")
+            await callback.message.answer(
                 f"📝 <b>Важно:</b>\n"
                 f"• Ссылка действует 24 часа\n"
                 f"• Можно использовать только один раз\n"
@@ -70,7 +74,9 @@ async def get_invite_command(callback: CallbackQuery):
                 f"⚠️ <i>Если ссылка не сработает, напишите администратору</i>",
                 parse_mode="HTML"
             )
+            await callback.answer()
 
         except Exception as e:
             logger.error(f"Ошибка создания ссылки: {e}")
-            await callback.answer("❌ Ошибка при создании ссылки. Попробуйте позже.")
+            await callback.message.answer("❌ Ошибка при создании ссылки. Попробуйте позже.")
+            await callback.answer()
