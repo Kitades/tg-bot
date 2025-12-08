@@ -53,6 +53,18 @@ def setup_logging():
     logging.getLogger('aiogram').setLevel(logging.WARNING)
     logging.getLogger('aiohttp').setLevel(logging.WARNING)
     logging.getLogger('yookassa').setLevel(logging.INFO)
-    logging.getLogger('sqlalchemy').setLevel(logging.WARNING)
+    # logging.getLogger('sqlalchemy').setLevel(logging.WARNING)
+
+    sqlalchemy_loggers = [
+        "sqlalchemy",
+        "sqlalchemy.engine",
+        "sqlalchemy.pool",
+        "sqlalchemy.orm",
+    ]
+
+    for name in sqlalchemy_loggers:
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.WARNING)
+        logger.propagate = False
 
     logging.info("Логирование настроено успешно")
