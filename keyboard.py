@@ -15,8 +15,6 @@ welcome_text = (
     "Вас ждут еженедельные разборы консультаций, ортодонтических случаев, интересных комплексных случаев, "
     "разборы организации  клиники и взаимосвязи управления с медициной, "
     "регулярные обсуждения по живым вопросам!\n\n"
-    "🎁 Вы автоматически подписаны на <b>бесплатную рассылку</b> - "
-    "будете получать интересные посты каждый день в 14:00.\n\n"
     "💎 Чтобы получить доступ ко всему эксклюзивному контенту, "
     "оформите премиум подписку: \n\n"
 )
@@ -35,7 +33,8 @@ async def main_keyboard(message, sub_info, has_active_sub: bool = False):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Моя подписка", callback_data="my_subscription")],
             [InlineKeyboardButton(text="✏️ Изменить email", callback_data="change_email")],
-            [InlineKeyboardButton(text=" Помощь", callback_data="help")]
+            [InlineKeyboardButton(text=" Помощь", callback_data="help")],
+            [InlineKeyboardButton(text="📄 Публичная оферта", callback_data="offer")]
         ])
         await message.answer(
             f"{welcome_text}"
@@ -50,7 +49,8 @@ async def main_keyboard(message, sub_info, has_active_sub: bool = False):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Купить подписку", callback_data="buy_subscription")],
             [InlineKeyboardButton(text="✏️ Изменить email", callback_data="change_email")],
-            [InlineKeyboardButton(text=" Помощь", callback_data="help")]
+            [InlineKeyboardButton(text=" Помощь", callback_data="help")],
+            [InlineKeyboardButton(text="📄 Публичная оферта", callback_data="offer")]
         ])
         await message.answer(
             f"{welcome_text}"

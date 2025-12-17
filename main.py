@@ -8,7 +8,7 @@ from yookassa import Configuration
 from checksub import check_subscriptions, send_daily_report
 
 from config import bot, dp, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, BOT_TOKEN
-from handlers import commands, handler_admin, group_handlers, invite_handlers
+from handlers import commands, handler_admin, group_handlers, invite_handlers, offer_handlers
 
 from log.logger import get_logger
 from log.logging_config import setup_logging
@@ -40,6 +40,7 @@ async def main():
         dp.include_router(handler_admin.router)
         dp.include_router(group_handlers.router)
         dp.include_router(invite_handlers.router)
+        dp.include_router(offer_handlers.router)
         logger.info("Роутеры подключены")
 
         # Создаем web-приложение для вебхуков ЮКассы

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SUBSCRIPTION_PRICE = (2.00, 8900.00)
+SUBSCRIPTION_PRICE = (5900.00, 8900.00)
 ADMIN_IDS = [91211500, 384110333]
 # ADMIN_IDS = [384110333]
 
