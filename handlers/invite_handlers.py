@@ -10,6 +10,7 @@ from database.session import get_db_session
 from database.models import User
 from sqlalchemy import select
 
+from handlers.commands import check_active_subscription
 from servises.invite_service import InviteService
 
 router = Router()
@@ -34,10 +35,9 @@ async def get_invite_command(callback: CallbackQuery):
             return
 
         # # Здесь проверка активной подписки
-        if not user.has_active_subscription:
+        if not await check_active_subscription(user.id):
             await callback.message.answer("❌ У вас нет активной подписки")
             return
-
         # Проверяем, не в группе ли уже пользователь
         try:
             member = await callback.bot.get_chat_member(USERNAME_CHANNEL, user_id)
