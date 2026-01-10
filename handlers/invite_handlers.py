@@ -29,14 +29,14 @@ async def get_invite_command(callback: CallbackQuery):
         )
         user = result.scalar_one_or_none()
 
-        # if not user:
-        #     await message.answer("❌ Сначала используйте /start")
-        #     return
+        if not user:
+            await callback.message.answer("❌ Сначала используйте /start")
+            return
 
         # # Здесь проверка активной подписки
-        # if not user.has_active_subscription:
-        #     await message.answer("❌ У вас нет активной подписки")
-        #     return
+        if not user.has_active_subscription:
+            await callback.message.answer("❌ У вас нет активной подписки")
+            return
 
         # Проверяем, не в группе ли уже пользователь
         try:

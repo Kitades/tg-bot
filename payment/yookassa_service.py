@@ -79,7 +79,7 @@ class YooKassaService:
                                 "currency": "RUB"
                             },
                             "quantity": 1,
-                            "vat_code": 1,
+                            "vat_code": 7,
                             "payment_mode": "full_prepayment",
                             "payment_subject": "service"
                         }

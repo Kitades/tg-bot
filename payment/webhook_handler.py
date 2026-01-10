@@ -175,7 +175,7 @@ class WebhookHandler:
         try:
             # lazy import main.bot to avoid circular imports
             from main import bot
-            await bot.unban_chat_member(chat_id=USERNAME_CHANNEL, user_id=user_id)
+            # await bot.unban_chat_member(chat_id=USERNAME_CHANNEL, user_id=user_id)
             await bot.send_message(chat_id=user_id,
                                    text="✅ Ваша подписка активирована! Добро пожаловать в закрытую группу!")
             logger.info(f"User {user_id} added to group")
