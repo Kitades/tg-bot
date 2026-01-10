@@ -532,7 +532,7 @@ async def check_payment(callback: types.CallbackQuery):
 
         except Exception as e:
             logger.error(f"Ошибка проверки платежа: {str(e)}\", exc_info=True")
-            await callback.message.answer("❌ Произошла ошибка при проверке платежа")
+            # await callback.message.answer("❌ Произошла ошибка при проверке платежа")
             await callback.answer()
 
 
