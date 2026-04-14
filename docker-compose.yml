@@ -16,7 +16,6 @@ services:
 
   app:
     build: .
-    container_name: bot_app
     env_file: .env
     depends_on:
       - db
@@ -31,6 +30,8 @@ services:
   nginx:
     image: nginx:1.24
     container_name: nginx
+    depends_on:
+      - app
     ports:
       - "80:80"
       - "443:443"
@@ -46,3 +47,4 @@ volumes:
 
 networks:
   backend:
+    name: potaev_bot_backend
