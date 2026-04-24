@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: always
+
+  app:
+    build: .
+    env_file: .env
+    depends_on:
+      - db
+    expose:
+      - "8080"
+    networks:
+      - backend
+    restart: always
+    volumes:
+      - ./script:/app/script
+
+  nginx:
+    image: nginx:1.24
+    container_name: nginx
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/site.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - backend
+    restart: always
+
+volumes:
+  pgdata:
+
+networks:
+  backend:
+    name: potaev_bot_backend
